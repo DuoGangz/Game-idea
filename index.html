@@ -49,6 +49,7 @@
                     <span class="resource gold">Gold: <span id="shop-gold">1000</span></span>
                     <span class="resource">🪵 Wood: <span id="shop-wood">500</span></span>
                     <span class="resource">🪨 Stone: <span id="shop-stone">300</span></span>
+                    <span class="resource">🍞 Food: <span id="shop-food">200</span></span>
                     <span class="resource shards">Shards: <span id="shop-shards">0</span></span>
                 </div>
             </div>
@@ -71,9 +72,14 @@
                             <p>Cost: 300 Gold, 50 Stone</p>
                             <button class="buy-btn" data-item="quarry">Buy</button>
                         </div>
+                        <div class="shop-item">
+                            <h4>🌾 Farm</h4>
+                            <p>Cost: 150 Gold, 75 Wood</p>
+                            <button class="buy-btn" data-item="farm">Buy</button>
+                        </div>
                     </div>
                 </div>
-                
+
                 <div class="shop-section">
                     <h3>Shards</h3>
                     <div class="shop-items">
@@ -105,7 +111,22 @@
                     <span class="resource gold">Gold: <span id="city-gold">1000</span></span>
                     <span class="resource">🪵 Wood: <span id="city-wood">500</span></span>
                     <span class="resource">🪨 Stone: <span id="city-stone">300</span></span>
-                    <span class="city-population">Population: <span id="city-population">0</span></span>
+                    <span class="resource">🍞 Food: <span id="city-food">200</span></span>
+                    <span class="city-population">Citizens: <span id="city-population">0 / 0</span></span>
+                </div>
+            </div>
+            <div class="citizen-overview">
+                <div class="citizen-stats">
+                    <span>Total Citizens: <span id="citizen-count">0 / 0</span></span>
+                    <span>Unassigned: <span id="citizen-unassigned">0</span></span>
+                    <span>Daily Food Need: <span id="daily-food-requirement">0</span></span>
+                </div>
+                <div class="food-status">
+                    <span class="food-amount">🍞 Stored Food: <span id="food-amount">200</span></span>
+                    <div class="food-bar">
+                        <div class="food-bar-fill" id="food-bar-fill"></div>
+                    </div>
+                    <small>Food bar depletes over a full day of rations</small>
                 </div>
             </div>
             <div class="city-content">
@@ -121,6 +142,7 @@
                                 <h4>House</h4>
                                 <p>+5 Population</p>
                                 <p>Cost: 100 Gold, 50 Wood</p>
+                                <p>No upkeep required</p>
                             </div>
                         </div>
                         <div class="building-option" data-building="lumber-mill">
@@ -128,6 +150,8 @@
                             <div class="building-info">
                                 <h4>Lumber Mill</h4>
                                 <p>+10 Wood/hour</p>
+                                <p>Upkeep: 2 Gold/hour</p>
+                                <p>Requires up to 5 citizens for full output</p>
                                 <p>Cost: 200 Gold, 100 Wood</p>
                             </div>
                         </div>
@@ -136,23 +160,39 @@
                             <div class="building-info">
                                 <h4>Stone Quarry</h4>
                                 <p>+8 Stone/hour</p>
+                                <p>Upkeep: 3 Gold/hour</p>
+                                <p>Requires up to 10 citizens for full output</p>
                                 <p>Cost: 300 Gold, 50 Stone</p>
+                            </div>
+                        </div>
+                        <div class="building-option" data-building="farm">
+                            <div class="building-icon">🌾</div>
+                            <div class="building-info">
+                                <h4>Farm</h4>
+                                <p>+12 Food/hour</p>
+                                <p>Upkeep: 2 Gold, 1 Wood/hour</p>
+                                <p>Requires up to 6 citizens for full output</p>
+                                <p>Cost: 150 Gold, 75 Wood</p>
                             </div>
                         </div>
                         <div class="building-option" data-building="barracks">
                             <div class="building-icon">🏰</div>
                             <div class="building-info">
                                 <h4>Barracks</h4>
-                                <p>Train Soldiers</p>
-                                <p>Cost: 500 Gold, 200 Wood</p>
+                                <p>Required: 10 Citizens per barracks owned</p>
+                                <p>Supports 1 tower when fully staffed</p>
+                                <p>Upkeep: 5 Gold/hour</p>
+                                <p>Requires up to 10 citizens for full training</p>
+                                <p>Cost: 300 Gold, 10 Wood, 10 Stone</p>
                             </div>
                         </div>
                         <div class="building-option" data-building="hospital">
                             <div class="building-icon">🏥</div>
                             <div class="building-info">
                                 <h4>Hospital</h4>
-                                <p>+15% Max Health</p>
+                                <p>+15% Max Health when fully staffed</p>
                                 <p>Upkeep: 15 Gold, 5 Wood, 5 Stone per hour</p>
+                                <p>Requires up to 20 citizens for full care</p>
                                 <p>Cost: 450 Gold, 150 Wood, 150 Stone</p>
                             </div>
                         </div>
@@ -175,6 +215,7 @@
                         <span id="health-value">100 / 100</span>
                     </div>
                     <span class="resource gold">Gold: <span id="defense-gold">1000</span></span>
+                    <span class="resource">🍞 Food: <span id="defense-food">200</span></span>
                 </div>
             </div>
             <div class="defense-content">

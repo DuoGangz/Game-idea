@@ -7,9 +7,29 @@ const BUILDING_BASE_COSTS = {
     'house': { gold: 100, wood: 50, stone: 0 },
     'lumber-mill': { gold: 200, wood: 100, stone: 0 },
     'quarry': { gold: 300, wood: 0, stone: 50 },
-    'barracks': { gold: 500, wood: 200, stone: 0 },
+    'farm': { gold: 150, wood: 75, stone: 0 },
+    'barracks': { gold: 300, wood: 10, stone: 10 },
     'hospital': { gold: 450, wood: 150, stone: 150 }
 };
+
+const BUILDING_CITIZEN_REQUIREMENTS = {
+    'lumber-mill': 5,
+    'quarry': 10,
+    'farm': 6,
+    'barracks': 10,
+    'hospital': 20
+};
+
+const BUILDING_ASSIGNMENT_PRIORITY = {
+    'farm': 0,
+    'hospital': 1,
+    'lumber-mill': 2,
+    'quarry': 3,
+    'barracks': 4
+};
+
+const POPULATION_PER_BARRACKS = 10;
+const FOOD_PER_CITIZEN_PER_DAY = 1;
 
 const TOWER_BASE_COSTS = {
     'archer': { gold: 150, wood: 40, stone: 15 },
@@ -29,7 +49,7 @@ const RESOURCE_DROP_BASE_AMOUNTS = {
 };
 
 function multiplyCost(cost = {}, multiplier = 1) {
-    const result = { gold: 0, wood: 0, stone: 0, shards: 0 };
+const result = { gold: 0, wood: 0, stone: 0, shards: 0, food: 0 };
     Object.keys(result).forEach(resource => {
         if (typeof cost[resource] === 'number') {
             result[resource] = Math.round(cost[resource] * multiplier);
@@ -69,6 +89,9 @@ function formatResourceCost(cost = {}) {
         const shardLabel = cost.shards === 1 ? 'Shard' : 'Shards';
         parts.push(`${cost.shards} ${shardLabel}`);
     }
+    if (cost.food) {
+        parts.push(`${cost.food} Food`);
+    }
     return parts.length > 0 ? parts.join(', ') : '0';
 }
 
@@ -77,6 +100,7 @@ function getBuildingDisplayName(type) {
         'house': 'House',
         'lumber-mill': 'Lumber Mill',
         'quarry': 'Stone Quarry',
+        'farm': 'Farm',
         'barracks': 'Barracks',
         'hospital': 'Hospital'
     };
@@ -98,9 +122,15 @@ class GameState {
             gold: 1000,
             wood: 500,
             stone: 300,
-            shards: 0
+            shards: 0,
+            food: 200
         };
         this.population = 0;
+        this.populationCapacity = 0;
+        this.unassignedCitizens = 0;
+        this.populationFoodAccumulator = 0;
+        this.populationFoodProgress = 0;
+        this.lastFoodCheck = Date.now();
         this.buildings = [];
         this.towers = [];
         this.enemies = [];
@@ -144,23 +174,29 @@ class GameState {
         updateDisplay('wood', this.resources.wood);
         updateDisplay('stone', this.resources.stone);
         updateDisplay('shards', this.resources.shards);
+        updateDisplay('food', this.resources.food);
         updateDisplay('city-gold', this.resources.gold);
         updateDisplay('city-wood', this.resources.wood);
         updateDisplay('city-stone', this.resources.stone);
+        updateDisplay('city-food', this.resources.food);
         updateDisplay('defense-gold', this.resources.gold);
+        updateDisplay('defense-food', this.resources.food);
         updateDisplay('shop-gold', this.resources.gold);
         updateDisplay('shop-wood', this.resources.wood);
         updateDisplay('shop-stone', this.resources.stone);
         updateDisplay('shop-shards', this.resources.shards);
+        updateDisplay('shop-food', this.resources.food);
 
         this.updatePopulationUI();
+        this.updateCitizenUI();
     }
 
     canAfford(cost) {
-        return this.resources.gold >= (cost.gold || 0) && 
-               this.resources.wood >= (cost.wood || 0) && 
+        return this.resources.gold >= (cost.gold || 0) &&
+               this.resources.wood >= (cost.wood || 0) &&
                this.resources.stone >= (cost.stone || 0) &&
-               this.resources.shards >= (cost.shards || 0);
+               this.resources.shards >= (cost.shards || 0) &&
+               this.resources.food >= (cost.food || 0);
     }
 
     spendResources(cost) {
@@ -168,17 +204,34 @@ class GameState {
         this.resources.wood -= (cost.wood || 0);
         this.resources.stone -= (cost.stone || 0);
         this.resources.shards -= (cost.shards || 0);
+        this.resources.food -= (cost.food || 0);
+        Object.keys(this.resources).forEach(resource => {
+            if (this.resources[resource] < 0) {
+                this.resources[resource] = 0;
+            }
+        });
         this.updateResources();
         this.saveGameState();
     }
 
-    addResources(amount) {
+    addResources(amount, options = {}) {
+        const { skipSave = false, skipUpdate = false } = options;
         this.resources.gold += amount.gold || 0;
         this.resources.wood += amount.wood || 0;
         this.resources.stone += amount.stone || 0;
         this.resources.shards += amount.shards || 0;
-        this.updateResources();
-        this.saveGameState();
+        this.resources.food += amount.food || 0;
+        Object.keys(this.resources).forEach(resource => {
+            if (this.resources[resource] < 0) {
+                this.resources[resource] = 0;
+            }
+        });
+        if (!skipUpdate) {
+            this.updateResources();
+        }
+        if (!skipSave) {
+            this.saveGameState();
+        }
     }
 
     saveGameState() {
@@ -188,6 +241,10 @@ class GameState {
             health: this.health,
             maxHealth: this.maxHealth,
             population: this.population,
+            populationCapacity: this.populationCapacity,
+            unassignedCitizens: this.unassignedCitizens,
+            populationFoodAccumulator: this.populationFoodAccumulator,
+            populationFoodProgress: this.populationFoodProgress,
             buildings: this.buildings.map(building => building.serialize()),
             towers: this.towers.map(tower => tower.serialize()),
             musicVolume: this.musicVolume,
@@ -203,6 +260,9 @@ class GameState {
             try {
                 const gameData = JSON.parse(savedData);
                 this.resources = gameData.resources || this.resources;
+                if (typeof this.resources.food !== 'number') {
+                    this.resources.food = 200;
+                }
                 this.currentWave = gameData.currentWave || this.currentWave;
                 if (typeof gameData.health === 'number') {
                     this.health = gameData.health;
@@ -218,6 +278,22 @@ class GameState {
                     this.population = gameData.population;
                 }
 
+                if (typeof gameData.populationCapacity === 'number') {
+                    this.populationCapacity = gameData.populationCapacity;
+                }
+
+                if (typeof gameData.unassignedCitizens === 'number') {
+                    this.unassignedCitizens = gameData.unassignedCitizens;
+                }
+
+                if (typeof gameData.populationFoodAccumulator === 'number') {
+                    this.populationFoodAccumulator = gameData.populationFoodAccumulator;
+                }
+
+                if (typeof gameData.populationFoodProgress === 'number') {
+                    this.populationFoodProgress = gameData.populationFoodProgress;
+                }
+                
                 if (Array.isArray(gameData.buildings)) {
                     this.buildings = gameData.buildings
                         .map(data => Building.fromData(data))
@@ -235,7 +311,10 @@ class GameState {
                 console.log('Failed to load saved game data');
             }
         }
-        this.recalculatePopulation();
+        this.population = Math.max(0, Math.floor(this.population));
+        this.populationCapacity = Math.max(0, Math.floor(this.populationCapacity));
+        this.lastFoodCheck = Date.now();
+        this.recalculatePopulation({ allowGrowth: false });
         this.recalculateHealthFromBuildings();
         this.health = Math.min(this.health, this.maxHealth);
         this.updatePopulationUI();
@@ -268,8 +347,10 @@ class GameState {
         this.updateHealthUI();
     }
 
-    recalculatePopulation() {
-        this.population = this.buildings.reduce((total, building) => {
+    recalculatePopulation(options = {}) {
+        const { allowGrowth = true } = options;
+        const previousCapacity = this.populationCapacity || 0;
+        const capacity = this.buildings.reduce((total, building) => {
             if (typeof building.getPopulationContribution === 'function') {
                 return total + building.getPopulationContribution();
             }
@@ -280,14 +361,214 @@ class GameState {
             return total;
         }, 0);
 
+        this.populationCapacity = Math.max(0, Math.floor(capacity));
+
+        if (allowGrowth) {
+            if (this.populationCapacity > previousCapacity) {
+                const increase = this.populationCapacity - previousCapacity;
+                this.population = Math.min(this.populationCapacity, this.population + increase);
+            } else if (this.population > this.populationCapacity) {
+                this.population = this.populationCapacity;
+            }
+        } else {
+            this.population = Math.min(this.population, this.populationCapacity);
+        }
+
+        this.population = Math.max(0, Math.floor(this.population));
+        this.autoAssignCitizens();
         this.updatePopulationUI();
     }
 
     updatePopulationUI() {
         const populationElement = document.getElementById('city-population');
         if (populationElement) {
-            populationElement.textContent = this.population;
+            populationElement.textContent = `${this.population} / ${this.populationCapacity}`;
         }
+        this.updateCitizenUI();
+    }
+
+    updateCitizenUI() {
+        const citizenCountElement = document.getElementById('citizen-count');
+        if (citizenCountElement) {
+            citizenCountElement.textContent = `${this.population} / ${this.populationCapacity}`;
+        }
+
+        const unassignedElement = document.getElementById('citizen-unassigned');
+        if (unassignedElement) {
+            unassignedElement.textContent = this.unassignedCitizens;
+        }
+
+        const dailyNeedElement = document.getElementById('daily-food-requirement');
+        if (dailyNeedElement) {
+            dailyNeedElement.textContent = this.getDailyFoodRequirement();
+        }
+
+        const foodAmountElement = document.getElementById('food-amount');
+        if (foodAmountElement) {
+            foodAmountElement.textContent = Math.max(0, Math.floor(this.resources.food));
+        }
+
+        const foodBarFill = document.getElementById('food-bar-fill');
+        if (foodBarFill) {
+            const progress = Number.isFinite(this.populationFoodProgress) ? this.populationFoodProgress : 0;
+            const clamped = Math.min(Math.max(progress, 0), 1);
+            const width = (1 - clamped) * 100;
+            foodBarFill.style.width = `${width.toFixed(1)}%`;
+        }
+    }
+
+    getDailyFoodRequirement() {
+        return Math.max(0, Math.floor(this.population * FOOD_PER_CITIZEN_PER_DAY));
+    }
+
+    autoAssignCitizens() {
+        const totalCitizens = Math.max(0, Math.floor(this.population));
+        let remaining = totalCitizens;
+
+        const buildingsNeedingCitizens = this.buildings
+            .filter(building => building instanceof Building && building.getCitizenRequirement() > 0)
+            .sort((a, b) => {
+                const priorityA = BUILDING_ASSIGNMENT_PRIORITY[a.type] ?? 99;
+                const priorityB = BUILDING_ASSIGNMENT_PRIORITY[b.type] ?? 99;
+                return priorityA - priorityB;
+            });
+
+        this.buildings.forEach(building => {
+            if (!(building instanceof Building)) {
+                return;
+            }
+            if (building.getCitizenRequirement() <= 0) {
+                building.assignedCitizens = 0;
+            }
+        });
+
+        buildingsNeedingCitizens.forEach(building => {
+            building.assignedCitizens = 0;
+        });
+
+        buildingsNeedingCitizens.forEach(building => {
+            if (remaining <= 0) {
+                return;
+            }
+            building.assignedCitizens = 1;
+            remaining--;
+        });
+
+        buildingsNeedingCitizens.forEach(building => {
+            if (remaining <= 0) {
+                return;
+            }
+            const requirement = building.getCitizenRequirement();
+            const needed = Math.max(requirement - building.assignedCitizens, 0);
+            if (needed <= 0) {
+                return;
+            }
+            const allocate = Math.min(needed, remaining);
+            building.assignedCitizens += allocate;
+            remaining -= allocate;
+        });
+
+        this.unassignedCitizens = remaining;
+        this.recalculateHealthFromBuildings();
+        this.updateCitizenUI();
+    }
+
+    getTowerCapacity() {
+        return this.buildings.reduce((capacity, building) => {
+            if (!(building instanceof Building) || building.type !== 'barracks') {
+                return capacity;
+            }
+            const requirement = building.getCitizenRequirement();
+            if (requirement <= 0) {
+                return capacity;
+            }
+            const assigned = Math.max(0, Math.floor(building.assignedCitizens || 0));
+            return capacity + Math.floor(assigned / requirement);
+        }, 0);
+    }
+
+    handleStarvation(foodShortage) {
+        const deaths = Math.min(Math.max(foodShortage, 0), this.population);
+        if (deaths <= 0) {
+            return false;
+        }
+
+        this.population = Math.max(0, Math.floor(this.population - deaths));
+
+        if (this.population <= 0) {
+            this.populationFoodAccumulator = 0;
+            this.populationFoodProgress = 0;
+        }
+
+        this.autoAssignCitizens();
+        this.updatePopulationUI();
+        return true;
+    }
+
+    processPopulationUpkeep(options = {}) {
+        const { skipSave = false } = options;
+        const now = Date.now();
+        const elapsedMinutes = (now - this.lastFoodCheck) / 60000;
+        this.lastFoodCheck = now;
+
+        if (!Number.isFinite(elapsedMinutes) || elapsedMinutes <= 0) {
+            this.updateCitizenUI();
+            if (!skipSave) {
+                this.saveGameState();
+            }
+            return false;
+        }
+
+        const dailyRequirement = this.getDailyFoodRequirement();
+        if (dailyRequirement <= 0) {
+            this.populationFoodAccumulator = 0;
+            this.populationFoodProgress = 0;
+            this.updateCitizenUI();
+            if (!skipSave) {
+                this.saveGameState();
+            }
+            return false;
+        }
+
+        const consumption = (this.population * FOOD_PER_CITIZEN_PER_DAY) * (elapsedMinutes / 1440);
+        this.populationFoodAccumulator += consumption;
+        this.populationFoodProgress += consumption / dailyRequirement;
+
+        let starvationOccurred = false;
+
+        const wholeUnits = Math.floor(this.populationFoodAccumulator);
+        if (wholeUnits > 0) {
+            this.populationFoodAccumulator -= wholeUnits;
+            if (this.resources.food >= wholeUnits) {
+                this.resources.food -= wholeUnits;
+            } else {
+                const shortage = wholeUnits - this.resources.food;
+                this.resources.food = 0;
+                starvationOccurred = this.handleStarvation(shortage) || starvationOccurred;
+            }
+        }
+
+        if (!Number.isFinite(this.populationFoodAccumulator) || this.populationFoodAccumulator < 0) {
+            this.populationFoodAccumulator = 0;
+        }
+
+        if (this.populationFoodProgress >= 1) {
+            this.populationFoodProgress -= Math.floor(this.populationFoodProgress);
+        }
+
+        if (!Number.isFinite(this.populationFoodProgress) || this.populationFoodProgress < 0) {
+            this.populationFoodProgress = 0;
+        } else if (this.populationFoodProgress > 1) {
+            this.populationFoodProgress = this.populationFoodProgress % 1;
+        }
+
+        this.updateCitizenUI();
+
+        if (!skipSave) {
+            this.saveGameState();
+        }
+
+        return starvationOccurred;
     }
 
     updateHealthUI() {
@@ -342,22 +623,14 @@ class GameState {
     }
 
     handleBuildingAdded(building) {
-        if (building.type === 'hospital') {
-            this.recalculateHealthFromBuildings();
-        } else {
-            this.updateHealthUI();
-        }
         this.recalculatePopulation();
+        this.updateHealthUI();
         this.saveGameState();
     }
 
     handleBuildingUpdated(building) {
-        if (building.type === 'hospital') {
-            this.recalculateHealthFromBuildings();
-        } else {
-            this.updateHealthUI();
-        }
         this.recalculatePopulation();
+        this.updateHealthUI();
         this.saveGameState();
     }
 }
@@ -375,8 +648,10 @@ class Building {
             gold: 0,
             wood: 0,
             stone: 0,
-            shards: 0
+            shards: 0,
+            food: 0
         }, options.resourceBuffer || {});
+        this.assignedCitizens = options.assignedCitizens ?? 0;
         this.baseProductionRates = this.getBaseProductionRates();
         this.baseUpkeepRates = this.getBaseUpkeepPerHour();
     }
@@ -385,16 +660,36 @@ class Building {
         const rates = {
             'lumber-mill': { wood: 10 },
             'quarry': { stone: 8 },
-            'house': { gold: 5 }
+            'house': { gold: 5 },
+            'farm': { food: 0.2 }
         };
         return rates[this.type] || {};
     }
 
     getBaseUpkeepPerHour() {
         const upkeep = {
+            'lumber-mill': { gold: 2 },
+            'quarry': { gold: 3 },
+            'farm': { gold: 2, wood: 1 },
+            'barracks': { gold: 5 },
             'hospital': { gold: 15, wood: 5, stone: 5 }
         };
         return upkeep[this.type] || {};
+    }
+
+    getCitizenRequirement() {
+        return BUILDING_CITIZEN_REQUIREMENTS[this.type] || 0;
+    }
+
+    getProductivity() {
+        const requirement = this.getCitizenRequirement();
+        if (requirement <= 0) {
+            return 1;
+        }
+        if (!this.assignedCitizens || this.assignedCitizens <= 0) {
+            return 0;
+        }
+        return Math.min(1, this.assignedCitizens / requirement);
     }
 
     getProductionPerMinute() {
@@ -424,6 +719,7 @@ class Building {
             'house': '🏠',
             'lumber-mill': '🏭',
             'quarry': '⛏️',
+            'farm': '🌾',
             'barracks': '🏰',
             'hospital': '🏥'
         };
@@ -443,7 +739,7 @@ class Building {
         }
         const baseBonus = 0.15;
         const upgradeBonus = Math.max(0, this.level - 1) * 0.05;
-        return baseBonus + upgradeBonus;
+        return (baseBonus + upgradeBonus) * this.getProductivity();
     }
 
     getUpgradeCost(targetLevel) {
@@ -478,8 +774,13 @@ class Building {
             }
         };
 
+        const productivity = this.getProductivity();
+
         Object.entries(this.getProductionPerMinute()).forEach(([resource, rate]) => {
-            applyChange(resource, rate * elapsedMinutes);
+            if (productivity <= 0) {
+                return;
+            }
+            applyChange(resource, rate * elapsedMinutes * productivity);
         });
 
         Object.entries(this.getUpkeepPerHour()).forEach(([resource, rate]) => {
@@ -514,7 +815,8 @@ class Building {
             y: data.y,
             level: data.level || 1,
             lastProduction: data.lastProduction,
-            resourceBuffer: data.resourceBuffer
+            resourceBuffer: data.resourceBuffer,
+            assignedCitizens: data.assignedCitizens
         });
     }
 }
@@ -1105,6 +1407,15 @@ function placeBuilding(index) {
         return;
     }
 
+    if (game.selectedBuilding === 'barracks') {
+        const existingBarracks = game.buildings.filter(building => building.type === 'barracks').length;
+        const requiredPopulation = POPULATION_PER_BARRACKS * (existingBarracks + 1);
+        if (game.population < requiredPopulation) {
+            alert(`You need at least ${requiredPopulation} citizens to support another barracks.`);
+            return;
+        }
+    }
+
     game.spendResources(cost);
 
     const building = new Building(game.selectedBuilding, { tileIndex: index });
@@ -1172,8 +1483,21 @@ function renderCityBuildings() {
 
         tile.classList.add('occupied');
         tile.dataset.buildingId = building.id;
-        tile.innerHTML = `<span class="tile-icon">${building.getIcon()}</span><span class="tile-tier">T${building.level}</span>`;
-        tile.title = `${getBuildingDisplayName(building.type)} - Tier ${building.level}`;
+        const citizenRequirement = typeof building.getCitizenRequirement === 'function'
+            ? building.getCitizenRequirement()
+            : 0;
+        const assignedCitizens = Math.max(0, Math.floor(building.assignedCitizens || 0));
+        let tileContent = `<span class="tile-icon">${building.getIcon()}</span>`;
+        if (citizenRequirement > 0) {
+            tileContent += `<span class="tile-citizens">${assignedCitizens}/${citizenRequirement}</span>`;
+        }
+        tileContent += `<span class="tile-tier">T${building.level}</span>`;
+        tile.innerHTML = tileContent;
+        let titleText = `${getBuildingDisplayName(building.type)} - Tier ${building.level}`;
+        if (citizenRequirement > 0) {
+            titleText += `${String.fromCharCode(10)}Citizens: ${assignedCitizens}/${citizenRequirement}`;
+        }
+        tile.title = titleText;
     });
 
     game.updatePopulationUI();
@@ -1718,6 +2042,12 @@ function placeTower(x, y) {
         return;
     }
 
+    const towerCapacity = game.getTowerCapacity();
+    if (game.towers.length >= towerCapacity) {
+        alert('You need another fully staffed barracks to command an additional tower.');
+        return;
+    }
+
     game.spendResources(cost);
 
     const tower = new Tower(game.selectedTower, x, y);
@@ -2091,12 +2421,37 @@ function showPowerUpIndicator(powerUpId) {
 
 function startResourceProduction() {
     setInterval(() => {
+        const totalChanges = { gold: 0, wood: 0, stone: 0, shards: 0, food: 0 };
+
         game.buildings.forEach(building => {
             const production = building.produce();
-            if (production && Object.keys(production).length > 0) {
-                game.addResources(production);
+            if (!production || typeof production !== 'object') {
+                return;
             }
+
+            Object.entries(production).forEach(([resource, amount]) => {
+                if (typeof amount !== 'number' || amount === 0) {
+                    return;
+                }
+                if (typeof totalChanges[resource] !== 'number') {
+                    totalChanges[resource] = 0;
+                }
+                totalChanges[resource] += amount;
+            });
         });
+
+        const hasChanges = Object.values(totalChanges).some(amount => amount !== 0);
+        if (hasChanges) {
+            game.addResources(totalChanges, { skipSave: true, skipUpdate: true });
+        }
+
+        const starvationOccurred = game.processPopulationUpkeep({ skipSave: true });
+        game.updateResources();
+        game.saveGameState();
+
+        if (starvationOccurred && typeof renderCityBuildings === 'function') {
+            renderCityBuildings();
+        }
     }, 60000); // Every minute
 }
 
