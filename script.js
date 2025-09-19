@@ -254,6 +254,7 @@ class Enemy {
         this.reward = this.getReward();
         this.lastMove = Date.now();
         this.segmentLengths = this.buildSegmentLengths();
+        this.healthBarElement = null;
     }
 
     getHealth() {
@@ -276,15 +277,24 @@ class Enemy {
     }
 
     getSpeedMultiplier() {
-        const speeds = {
-            'goblin': 1,
-            'orc': 0.85,
-            'dragon': 0.7,
-            'boss-goblin': 0.95,
-            'boss-orc': 0.8,
-            'boss-dragon': 0.65
-        };
-        return speeds[this.type] || 1;
+        const health = this.maxHealth;
+
+        if (health >= 1000) {
+            return 0.25;
+        }
+        if (health >= 500) {
+            return 0.35;
+        }
+        if (health >= 300) {
+            return 0.45;
+        }
+        if (health >= 200) {
+            return 0.6;
+        }
+        if (health >= 100) {
+            return 0.75;
+        }
+        return 1;
     }
 
     getReward() {
@@ -324,6 +334,28 @@ class Enemy {
             lengths.push(Math.sqrt(dx * dx + dy * dy));
         }
         return lengths;
+    }
+
+    setHealthBarElement(element) {
+        this.healthBarElement = element;
+        this.updateHealthBar();
+    }
+
+    updateHealthBar() {
+        if (!this.healthBarElement) {
+            return;
+        }
+
+        const ratio = this.maxHealth > 0 ? Math.max(this.health / this.maxHealth, 0) : 0;
+        this.healthBarElement.style.width = `${(ratio * 100).toFixed(0)}%`;
+
+        if (ratio <= 0.3) {
+            this.healthBarElement.style.backgroundColor = '#d93025';
+        } else if (ratio <= 0.6) {
+            this.healthBarElement.style.backgroundColor = '#f9a825';
+        } else {
+            this.healthBarElement.style.backgroundColor = '#4caf50';
+        }
     }
 
     move() {
@@ -377,7 +409,8 @@ class Enemy {
     }
 
     takeDamage(damage) {
-        this.health -= damage;
+        this.health = Math.max(0, this.health - damage);
+        this.updateHealthBar();
         return this.health <= 0;
     }
 }
@@ -1127,6 +1160,8 @@ function upgradeTower(tower) {
 function startWave() {
     if (game.waveInProgress) return;
 
+    clearWaveStatusMessage();
+
     // Generate a fresh randomized path for this wave
     generateDefensePath({ forceNew: true });
 
@@ -1185,7 +1220,15 @@ function spawnEnemy(type) {
     const id = game.enemyIdCounter++;
     enemy.domId = `enemy-${id}`;
     enemyElement.id = enemy.domId;
-    
+
+    const healthBar = document.createElement('div');
+    healthBar.className = 'enemy-health-bar';
+    const healthFill = document.createElement('div');
+    healthFill.className = 'enemy-health-fill';
+    healthBar.appendChild(healthFill);
+    enemyElement.appendChild(healthBar);
+    enemy.setHealthBarElement(healthFill);
+
     const { enemyLayer } = ensureFieldLayers();
     enemyLayer.appendChild(enemyElement);
 }
@@ -1228,13 +1271,16 @@ function handleWaveFailure() {
     
     // Check if player is eligible for power-up
     if (game.consecutiveFailures >= 3) {
+        const failureMessage = `Wave failed! -${penalty} gold penalty. Failures: ${game.consecutiveFailures}/3. Power-up unlocked!`;
+        showWaveStatusMessage(failureMessage, { type: 'failure', duration: 8000 });
         showPowerUpSelection();
     } else {
         document.getElementById('start-wave').textContent = 'Start Wave';
         document.getElementById('start-wave').disabled = false;
-        alert(`Wave failed! -${penalty} gold penalty. Failures: ${game.consecutiveFailures}/3`);
+        const failureMessage = `Wave failed! -${penalty} gold penalty. Failures: ${game.consecutiveFailures}/3`;
+        showWaveStatusMessage(failureMessage, { type: 'failure', duration: 6000 });
     }
-    
+
     game.saveGameState();
 }
 
@@ -1581,6 +1627,53 @@ function showRewardNotification(text, x, y) {
     };
     
     requestAnimationFrame(animate);
+}
+
+function showWaveStatusMessage(text, options = {}) {
+    const field = document.getElementById('game-field');
+    if (!field) {
+        return;
+    }
+
+    const { type = 'info', duration = 5000 } = options;
+    let messageElement = field.querySelector('.wave-status-message');
+
+    if (!messageElement) {
+        messageElement = document.createElement('div');
+        messageElement.className = 'wave-status-message';
+        field.appendChild(messageElement);
+    }
+
+    if (messageElement.hideTimeout) {
+        clearTimeout(messageElement.hideTimeout);
+    }
+
+    messageElement.textContent = text;
+    messageElement.classList.remove('info', 'success', 'failure');
+    messageElement.classList.add(type);
+    messageElement.classList.add('visible');
+
+    if (duration !== null) {
+        messageElement.hideTimeout = setTimeout(() => {
+            messageElement.classList.remove('visible');
+        }, duration);
+    }
+}
+
+function clearWaveStatusMessage() {
+    const field = document.getElementById('game-field');
+    if (!field) {
+        return;
+    }
+
+    const messageElement = field.querySelector('.wave-status-message');
+    if (messageElement) {
+        if (messageElement.hideTimeout) {
+            clearTimeout(messageElement.hideTimeout);
+            messageElement.hideTimeout = null;
+        }
+        messageElement.classList.remove('visible');
+    }
 }
 
 // Start the game loop
