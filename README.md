@@ -1,6 +1,6 @@
-# 🏰 Medieval Kingdom Defense
+# 🏰 Kingdoms Last Stand
 
-A medieval-themed browser game that combines city management and tower defense mechanics across three distinct screens.
+Kingdoms Last Stand is a medieval-themed browser game that combines city management and tower defense mechanics across three distinct screens.
 
 ## 🎮 Game Features
 
