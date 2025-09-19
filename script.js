@@ -30,6 +30,14 @@ const BUILDING_ASSIGNMENT_PRIORITY = {
 
 const POPULATION_PER_BARRACKS = 10;
 const FOOD_PER_CITIZEN_PER_DAY = 1;
+const STARTING_CITIZENS = 5;
+const HOUSE_POPULATION_BY_TIER = {
+    1: 5,
+    2: 10,
+    3: 15,
+    4: 20,
+    5: 30
+};
 
 const TOWER_BASE_COSTS = {
     'archer': { gold: 150, wood: 40, stone: 15 },
@@ -125,9 +133,9 @@ class GameState {
             shards: 0,
             food: 200
         };
-        this.population = 0;
+        this.population = STARTING_CITIZENS;
         this.populationCapacity = 0;
-        this.unassignedCitizens = 0;
+        this.unassignedCitizens = STARTING_CITIZENS;
         this.populationFoodAccumulator = 0;
         this.populationFoodProgress = 0;
         this.lastFoodCheck = Date.now();
@@ -256,6 +264,7 @@ class GameState {
 
     loadGameState() {
         const savedData = localStorage.getItem('kingdomsLastStand');
+        let loadedFromSave = false;
         if (savedData) {
             try {
                 const gameData = JSON.parse(savedData);
@@ -307,9 +316,14 @@ class GameState {
                 this.musicVolume = gameData.musicVolume || this.musicVolume;
                 this.effectsVolume = gameData.effectsVolume || this.effectsVolume;
                 this.consecutiveFailures = gameData.consecutiveFailures || 0;
+                loadedFromSave = true;
             } catch (e) {
                 console.log('Failed to load saved game data');
             }
+        }
+
+        if (!loadedFromSave) {
+            this.initializeStartingSettlement();
         }
         this.population = Math.max(0, Math.floor(this.population));
         this.populationCapacity = Math.max(0, Math.floor(this.populationCapacity));
@@ -319,6 +333,29 @@ class GameState {
         this.health = Math.min(this.health, this.maxHealth);
         this.updatePopulationUI();
         this.refreshEnemyDamage();
+    }
+
+    initializeStartingSettlement() {
+        const hasHouse = this.buildings.some(building => building instanceof Building && building.type === 'house');
+        if (!hasHouse) {
+            const occupiedTiles = new Set(
+                this.buildings
+                    .filter(building => building instanceof Building && typeof building.tileIndex === 'number')
+                    .map(building => building.tileIndex)
+            );
+            let tileIndex = 0;
+            while (occupiedTiles.has(tileIndex) && tileIndex < 48) {
+                tileIndex += 1;
+            }
+            const startingHouse = new Building('house', {
+                tileIndex: tileIndex < 48 ? tileIndex : null,
+                level: 1
+            });
+            this.buildings = [startingHouse, ...this.buildings];
+            this.populationCapacity = HOUSE_POPULATION_BY_TIER[1] || this.populationCapacity;
+        }
+        this.population = STARTING_CITIZENS;
+        this.unassignedCitizens = STARTING_CITIZENS;
     }
 
     recalculateHealthFromBuildings() {
@@ -350,18 +387,18 @@ class GameState {
     recalculatePopulation(options = {}) {
         const { allowGrowth = true } = options;
         const previousCapacity = this.populationCapacity || 0;
-        const capacity = this.buildings.reduce((total, building) => {
+        const capacityFromBuildings = this.buildings.reduce((total, building) => {
             if (typeof building.getPopulationContribution === 'function') {
                 return total + building.getPopulationContribution();
             }
             if (building.type === 'house') {
                 const level = typeof building.level === 'number' ? building.level : 1;
-                return total + (5 * level);
+                return total + (HOUSE_POPULATION_BY_TIER[Math.min(Math.max(Math.floor(level), 1), BUILDING_MAX_LEVEL)] || 0);
             }
             return total;
         }, 0);
 
-        this.populationCapacity = Math.max(0, Math.floor(capacity));
+        this.populationCapacity = Math.max(0, Math.floor(capacityFromBuildings));
 
         if (allowGrowth) {
             if (this.populationCapacity > previousCapacity) {
@@ -728,7 +765,8 @@ class Building {
 
     getPopulationContribution() {
         if (this.type === 'house') {
-            return 5 * this.level;
+            const tier = Math.min(Math.max(Math.floor(this.level), 1), BUILDING_MAX_LEVEL);
+            return HOUSE_POPULATION_BY_TIER[tier] || 0;
         }
         return 0;
     }
@@ -799,7 +837,8 @@ class Building {
             y: this.y,
             level: this.level,
             lastProduction: this.lastProduction,
-            resourceBuffer: this.resourceBuffer
+            resourceBuffer: this.resourceBuffer,
+            assignedCitizens: this.assignedCitizens
         };
     }
 
