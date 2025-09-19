@@ -85,7 +85,7 @@ class GameState {
             health: this.health,
             maxHealth: this.maxHealth,
             buildings: this.buildings.map(building => building.serialize()),
-            towers: this.towers,
+            towers: this.towers.map(tower => tower.serialize()),
             musicVolume: this.musicVolume,
             effectsVolume: this.effectsVolume,
             consecutiveFailures: this.consecutiveFailures
@@ -113,7 +113,11 @@ class GameState {
                 if (Array.isArray(gameData.buildings)) {
                     this.buildings = gameData.buildings.map(data => Building.fromData(data));
                 }
-                this.towers = gameData.towers || this.towers;
+                if (Array.isArray(gameData.towers)) {
+                    this.towers = gameData.towers
+                        .map(data => Tower.fromData(data))
+                        .filter(tower => tower instanceof Tower);
+                }
                 this.musicVolume = gameData.musicVolume || this.musicVolume;
                 this.effectsVolume = gameData.effectsVolume || this.effectsVolume;
                 this.consecutiveFailures = gameData.consecutiveFailures || 0;
@@ -295,14 +299,15 @@ class Building {
 }
 
 class Tower {
-    constructor(type, x, y) {
+    constructor(type, x, y, options = {}) {
         this.type = type;
         this.x = x;
         this.y = y;
-        this.damage = this.getDamage();
-        this.range = this.getRange();
-        this.fireRate = this.getFireRate();
-        this.lastShot = 0;
+        this.id = options.id || `tower-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+        this.damage = options.damage ?? this.getDamage();
+        this.range = options.range ?? this.getRange();
+        this.fireRate = options.fireRate ?? this.getFireRate();
+        this.lastShot = options.lastShot ?? 0;
         this.target = null;
     }
 
@@ -377,6 +382,35 @@ class Tower {
             return true;
         }
         return false;
+    }
+
+    serialize() {
+        return {
+            id: this.id,
+            type: this.type,
+            x: this.x,
+            y: this.y,
+            damage: this.damage,
+            range: this.range,
+            fireRate: this.fireRate,
+            lastShot: this.lastShot
+        };
+    }
+
+    static fromData(data = {}) {
+        if (!data || !data.type) {
+            return null;
+        }
+
+        const tower = new Tower(data.type, data.x ?? 0, data.y ?? 0, {
+            id: data.id,
+            damage: data.damage,
+            range: data.range,
+            fireRate: data.fireRate,
+            lastShot: data.lastShot
+        });
+        tower.target = null;
+        return tower;
     }
 }
 
@@ -1208,6 +1242,7 @@ function generateDefensePath(options = {}) {
     }
 
     decorateField(sceneryLayer, width, height, game.enemyPath, pathWidth);
+    renderTowers();
 }
 
 function clearBattlefieldEntities() {
@@ -1216,6 +1251,27 @@ function clearBattlefieldEntities() {
     projectileLayer.innerHTML = '';
     game.enemies = [];
     game.projectiles = [];
+}
+
+function renderTowers() {
+    const { towerLayer } = ensureFieldLayers();
+    towerLayer.innerHTML = '';
+
+    game.towers.forEach(tower => {
+        if (!(tower instanceof Tower)) {
+            return;
+        }
+
+        const towerElement = document.createElement('div');
+        towerElement.className = 'tower';
+        towerElement.style.left = `${tower.x}px`;
+        towerElement.style.top = `${tower.y}px`;
+        towerElement.textContent = tower.getIcon();
+        towerElement.dataset.towerId = tower.id;
+        towerElement.addEventListener('click', () => upgradeTower(tower));
+
+        towerLayer.appendChild(towerElement);
+    });
 }
 
 function selectTower(towerType) {
@@ -1284,21 +1340,15 @@ function placeTower(x, y) {
         
         const tower = new Tower(game.selectedTower, x, y);
         game.towers.push(tower);
-        
-        const towerElement = document.createElement('div');
-        towerElement.className = 'tower';
-        towerElement.style.left = x + 'px';
-        towerElement.style.top = y + 'px';
-        towerElement.textContent = tower.getIcon();
-        towerElement.addEventListener('click', () => upgradeTower(tower));
 
-        const { towerLayer } = ensureFieldLayers();
-        towerLayer.appendChild(towerElement);
-        
+        renderTowers();
+
         game.selectedTower = null;
         document.querySelectorAll('.tower-option').forEach(option => {
             option.style.borderColor = '#8b4513';
         });
+
+        game.saveGameState();
     } else {
         alert('Not enough resources!');
     }
@@ -1311,6 +1361,7 @@ function upgradeTower(tower) {
         tower.damage += 10;
         tower.range += 10;
         alert('Tower upgraded!');
+        game.saveGameState();
     } else {
         alert('Not enough gold for upgrade!');
     }
