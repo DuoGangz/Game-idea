@@ -12,6 +12,7 @@ class GameState {
         this.towers = [];
         this.enemies = [];
         this.projectiles = [];
+        this.enemyPath = [];
         this.currentWave = 1;
         this.lives = 10;
         this.gameRunning = false;
@@ -27,6 +28,8 @@ class GameState {
         this.waveStartTime = 0;
         this.consecutiveFailures = 0;
         this.activePowerUp = null;
+        this.currentPathData = null;
+        this.lastPathTemplateIndex = null;
         this.loadGameState();
     }
 
@@ -522,37 +525,216 @@ function placeBuilding(index) {
     }
 }
 
-function generateDefensePath() {
+// Path layouts inspired by the dirt routes drawn in maps.png
+const PATH_TEMPLATES = [
+    {
+        id: 'serpentine',
+        points: [
+            { x: 0, y: 0.5 },
+            { x: 0.2, y: 0.3 },
+            { x: 0.38, y: 0.68 },
+            { x: 0.6, y: 0.35 },
+            { x: 0.78, y: 0.7 },
+            { x: 1, y: 0.5 }
+        ]
+    },
+    {
+        id: 'meandering',
+        points: [
+            { x: 0, y: 0.65 },
+            { x: 0.18, y: 0.75 },
+            { x: 0.35, y: 0.4 },
+            { x: 0.52, y: 0.55 },
+            { x: 0.72, y: 0.25 },
+            { x: 1, y: 0.35 }
+        ]
+    },
+    {
+        id: 'switchback',
+        points: [
+            { x: 0, y: 0.35 },
+            { x: 0.22, y: 0.2 },
+            { x: 0.4, y: 0.75 },
+            { x: 0.58, y: 0.25 },
+            { x: 0.76, y: 0.75 },
+            { x: 1, y: 0.45 }
+        ]
+    },
+    {
+        id: 'riverbend',
+        points: [
+            { x: 0, y: 0.45 },
+            { x: 0.18, y: 0.6 },
+            { x: 0.34, y: 0.2 },
+            { x: 0.5, y: 0.4 },
+            { x: 0.68, y: 0.18 },
+            { x: 0.86, y: 0.65 },
+            { x: 1, y: 0.55 }
+        ]
+    }
+];
+
+function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+}
+
+function ensureFieldLayers() {
     const field = document.getElementById('game-field');
-    field.innerHTML = '';
-    
-    // Create a simple path from left to right
-    const path = [];
+
+    let pathLayer = field.querySelector('.path-layer');
+    if (!pathLayer) {
+        pathLayer = document.createElement('div');
+        pathLayer.className = 'path-layer';
+        field.insertBefore(pathLayer, field.firstChild);
+    }
+
+    let towerLayer = field.querySelector('.tower-layer');
+    if (!towerLayer) {
+        towerLayer = document.createElement('div');
+        towerLayer.className = 'tower-layer';
+        field.appendChild(towerLayer);
+    }
+
+    let enemyLayer = field.querySelector('.enemy-layer');
+    if (!enemyLayer) {
+        enemyLayer = document.createElement('div');
+        enemyLayer.className = 'enemy-layer';
+        field.appendChild(enemyLayer);
+    }
+
+    let projectileLayer = field.querySelector('.projectile-layer');
+    if (!projectileLayer) {
+        projectileLayer = document.createElement('div');
+        projectileLayer.className = 'projectile-layer';
+        field.appendChild(projectileLayer);
+    }
+
+    return { field, pathLayer, towerLayer, enemyLayer, projectileLayer };
+}
+
+function buildPathPoints(width, height, marginX, marginY, templateIndex, jitter) {
+    const template = PATH_TEMPLATES[templateIndex];
+    const horizontalSpan = Math.max(10, width - marginX * 2);
+    const verticalSpan = Math.max(10, height - marginY * 2);
+
+    return template.points.map((point, index) => {
+        const offset = jitter[index] || { dx: 0, dy: 0 };
+        const normalizedX = clamp(point.x + offset.dx, 0, 1);
+        const normalizedY = clamp(point.y + offset.dy, 0, 1);
+        return {
+            x: marginX + normalizedX * horizontalSpan,
+            y: marginY + normalizedY * verticalSpan
+        };
+    });
+}
+
+function interpolatePath(points, step = 20) {
+    const interpolated = [];
+    for (let i = 0; i < points.length - 1; i++) {
+        const start = points[i];
+        const end = points[i + 1];
+        const dx = end.x - start.x;
+        const dy = end.y - start.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const segments = Math.max(1, Math.floor(distance / step));
+
+        for (let s = 0; s < segments; s++) {
+            const t = s / segments;
+            interpolated.push({
+                x: start.x + dx * t,
+                y: start.y + dy * t
+            });
+        }
+    }
+
+    if (points.length > 0) {
+        interpolated.push(points[points.length - 1]);
+    }
+
+    return interpolated;
+}
+
+function drawDirtPath(layer, points, pathWidth) {
+    for (let i = 0; i < points.length - 1; i++) {
+        const start = points[i];
+        const end = points[i + 1];
+        const dx = end.x - start.x;
+        const dy = end.y - start.y;
+        const length = Math.sqrt(dx * dx + dy * dy);
+        const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+
+        const segment = document.createElement('div');
+        segment.className = 'path-segment';
+        segment.style.width = `${length}px`;
+        segment.style.height = `${pathWidth}px`;
+        segment.style.left = `${start.x}px`;
+        segment.style.top = `${start.y}px`;
+        segment.style.transform = `translate(-${pathWidth / 2}px, -${pathWidth / 2}px) rotate(${angle}deg)`;
+        layer.appendChild(segment);
+    }
+}
+
+function addPathMarkers(layer, points) {
+    if (!points.length) return;
+
+    const startMarker = document.createElement('div');
+    startMarker.className = 'path-marker start';
+    startMarker.style.left = `${points[0].x}px`;
+    startMarker.style.top = `${points[0].y}px`;
+    layer.appendChild(startMarker);
+
+    const endMarker = document.createElement('div');
+    endMarker.className = 'path-marker end';
+    endMarker.style.left = `${points[points.length - 1].x}px`;
+    endMarker.style.top = `${points[points.length - 1].y}px`;
+    layer.appendChild(endMarker);
+}
+
+function pickRandomPathTemplate(excludeIndex = null) {
+    const indices = PATH_TEMPLATES.map((_, index) => index);
+    const available = excludeIndex !== null && indices.length > 1
+        ? indices.filter(index => index !== excludeIndex)
+        : indices;
+    const choice = available[Math.floor(Math.random() * available.length)];
+    return choice;
+}
+
+function generateDefensePath(options = {}) {
+    const { forceNew = false } = options;
+    const { field, pathLayer } = ensureFieldLayers();
+
     const fieldRect = field.getBoundingClientRect();
-    // If field isn't visible yet, fallback to default dimensions
     const width = fieldRect.width || field.clientWidth || 800;
     const height = fieldRect.height || field.clientHeight || 500;
-    const startX = 50;
-    const endX = Math.max(startX + 50, width - 50);
-    const centerY = Math.max(20, Math.floor(height / 2));
-    
-    for (let x = startX; x <= endX; x += 20) {
-        path.push({ x, y: centerY });
+    const marginBase = Math.min(width, height) * 0.12;
+    const marginX = Math.min(Math.max(60, marginBase), Math.max(width / 2 - 40, 20));
+    const marginY = Math.min(Math.max(60, marginBase), Math.max(height / 2 - 40, 20));
+    const pathWidth = Math.max(50, Math.min(width, height) * 0.12);
+
+    if (!game.currentPathData || forceNew) {
+        const templateIndex = pickRandomPathTemplate(game.lastPathTemplateIndex);
+        const jitter = PATH_TEMPLATES[templateIndex].points.map((_, index, array) => {
+            if (index === 0 || index === array.length - 1) {
+                return { dx: 0, dy: 0 };
+            }
+            return {
+                dx: (Math.random() - 0.5) * 0.08,
+                dy: (Math.random() - 0.5) * 0.12
+            };
+        });
+
+        game.currentPathData = { templateIndex, jitter };
+        game.lastPathTemplateIndex = templateIndex;
     }
-    
-    // Store path for enemies
-    game.enemyPath = path;
-    
-    // Draw path
-    const pathElement = document.createElement('div');
-    pathElement.style.position = 'absolute';
-    pathElement.style.left = '0';
-    pathElement.style.top = centerY + 'px';
-    pathElement.style.width = width + 'px';
-    pathElement.style.height = '4px';
-    pathElement.style.background = '#8b4513';
-    pathElement.style.transform = 'translateY(-50%)';
-    field.appendChild(pathElement);
+
+    const { templateIndex, jitter } = game.currentPathData;
+    const basePoints = buildPathPoints(width, height, marginX, marginY, templateIndex, jitter);
+
+    pathLayer.innerHTML = '';
+    drawDirtPath(pathLayer, basePoints, pathWidth);
+    addPathMarkers(pathLayer, basePoints);
+
+    game.enemyPath = interpolatePath(basePoints, 18);
 }
 
 function selectTower(towerType) {
@@ -628,8 +810,9 @@ function placeTower(x, y) {
         towerElement.style.top = y + 'px';
         towerElement.textContent = tower.getIcon();
         towerElement.addEventListener('click', () => upgradeTower(tower));
-        
-        document.getElementById('game-field').appendChild(towerElement);
+
+        const { towerLayer } = ensureFieldLayers();
+        towerLayer.appendChild(towerElement);
         
         game.selectedTower = null;
         document.querySelectorAll('.tower-option').forEach(option => {
@@ -654,7 +837,10 @@ function upgradeTower(tower) {
 
 function startWave() {
     if (game.waveInProgress) return;
-    
+
+    // Generate a fresh randomized path for this wave
+    generateDefensePath({ forceNew: true });
+
     // Ensure we have a valid enemy path
     if (!game.enemyPath || game.enemyPath.length < 2) {
         generateDefensePath();
@@ -707,7 +893,8 @@ function spawnEnemy(type) {
     enemy.domId = `enemy-${id}`;
     enemyElement.id = enemy.domId;
     
-    document.getElementById('game-field').appendChild(enemyElement);
+    const { enemyLayer } = ensureFieldLayers();
+    enemyLayer.appendChild(enemyElement);
 }
 
 function endWave() {
@@ -967,7 +1154,8 @@ function gameLoop() {
                 projectileElement.style.left = projectile.x + 'px';
                 projectileElement.style.top = projectile.y + 'px';
                 projectileElement.id = `projectile-${game.projectiles.length - 1}`;
-                document.getElementById('game-field').appendChild(projectileElement);
+                const { projectileLayer } = ensureFieldLayers();
+                projectileLayer.appendChild(projectileElement);
             }
         });
 
@@ -1018,14 +1206,23 @@ function gameLoop() {
 }
 
 // Handle tower placement on game field
-document.getElementById('game-field').addEventListener('click', (e) => {
-    if (game.selectedTower && e.target.id === 'game-field') {
-        const rect = e.target.getBoundingClientRect();
+const gameFieldElement = document.getElementById('game-field');
+if (gameFieldElement) {
+    gameFieldElement.addEventListener('click', (e) => {
+        if (!game.selectedTower) {
+            return;
+        }
+
+        if (e.target.closest('.tower') || e.target.closest('.enemy') || e.target.closest('.projectile')) {
+            return;
+        }
+
+        const rect = gameFieldElement.getBoundingClientRect();
         const x = e.clientX - rect.left - 20;
         const y = e.clientY - rect.top - 20;
         placeTower(x, y);
-    }
-});
+    });
+}
 
 // Show reward notification when enemy is defeated
 function showRewardNotification(text, x, y) {
