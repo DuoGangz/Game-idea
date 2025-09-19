@@ -1,5 +1,97 @@
 // Kingdoms Last Stand - Game Logic
 
+const BUILDING_MAX_LEVEL = 5;
+const TOWER_MAX_LEVEL = 5;
+
+const BUILDING_BASE_COSTS = {
+    'house': { gold: 100, wood: 50, stone: 0 },
+    'lumber-mill': { gold: 200, wood: 100, stone: 0 },
+    'quarry': { gold: 300, wood: 0, stone: 50 },
+    'barracks': { gold: 500, wood: 200, stone: 0 },
+    'hospital': { gold: 450, wood: 150, stone: 150 }
+};
+
+const TOWER_BASE_COSTS = {
+    'archer': { gold: 150, wood: 40, stone: 15 },
+    'cannon': { gold: 300, wood: 20, stone: 90 },
+    'magic': { gold: 250, wood: 35, stone: 60 }
+};
+
+const RESOURCE_DROP_CHANCES = {
+    shards: 0.005,
+    wood: 0.45,
+    stone: 0.15
+};
+
+const RESOURCE_DROP_BASE_AMOUNTS = {
+    wood: 15,
+    stone: 10
+};
+
+function multiplyCost(cost = {}, multiplier = 1) {
+    const result = { gold: 0, wood: 0, stone: 0, shards: 0 };
+    Object.keys(result).forEach(resource => {
+        if (typeof cost[resource] === 'number') {
+            result[resource] = Math.round(cost[resource] * multiplier);
+        }
+    });
+    return result;
+}
+
+function getBuildingCost(type, tier = 1) {
+    const base = BUILDING_BASE_COSTS[type];
+    if (!base) {
+        return null;
+    }
+    return multiplyCost(base, tier);
+}
+
+function getTowerCost(type, tier = 1) {
+    const base = TOWER_BASE_COSTS[type];
+    if (!base) {
+        return null;
+    }
+    return multiplyCost(base, tier);
+}
+
+function formatResourceCost(cost = {}) {
+    const parts = [];
+    if (cost.gold) {
+        parts.push(`${cost.gold} Gold`);
+    }
+    if (cost.wood) {
+        parts.push(`${cost.wood} Wood`);
+    }
+    if (cost.stone) {
+        parts.push(`${cost.stone} Stone`);
+    }
+    if (cost.shards) {
+        const shardLabel = cost.shards === 1 ? 'Shard' : 'Shards';
+        parts.push(`${cost.shards} ${shardLabel}`);
+    }
+    return parts.length > 0 ? parts.join(', ') : '0';
+}
+
+function getBuildingDisplayName(type) {
+    const names = {
+        'house': 'House',
+        'lumber-mill': 'Lumber Mill',
+        'quarry': 'Stone Quarry',
+        'barracks': 'Barracks',
+        'hospital': 'Hospital'
+    };
+    return names[type] || type;
+}
+
+function getTowerDisplayName(type) {
+    const names = {
+        'archer': 'Archer Tower',
+        'cannon': 'Cannon Tower',
+        'magic': 'Magic Tower'
+    };
+    return names[type] || type;
+}
+
 class GameState {
     constructor() {
         this.resources = {
@@ -8,6 +100,7 @@ class GameState {
             stone: 300,
             shards: 0
         };
+        this.population = 0;
         this.buildings = [];
         this.towers = [];
         this.enemies = [];
@@ -40,19 +133,27 @@ class GameState {
     }
 
     updateResources() {
-        // Update resource displays
-        document.getElementById('gold').textContent = this.resources.gold;
-        document.getElementById('wood').textContent = this.resources.wood;
-        document.getElementById('stone').textContent = this.resources.stone;
-        document.getElementById('shards').textContent = this.resources.shards;
-        document.getElementById('city-gold').textContent = this.resources.gold;
-        document.getElementById('city-wood').textContent = this.resources.wood;
-        document.getElementById('city-stone').textContent = this.resources.stone;
-        document.getElementById('defense-gold').textContent = this.resources.gold;
-        document.getElementById('shop-gold').textContent = this.resources.gold;
-        document.getElementById('shop-wood').textContent = this.resources.wood;
-        document.getElementById('shop-stone').textContent = this.resources.stone;
-        document.getElementById('shop-shards').textContent = this.resources.shards;
+        const updateDisplay = (id, value) => {
+            const element = document.getElementById(id);
+            if (element) {
+                element.textContent = value;
+            }
+        };
+
+        updateDisplay('gold', this.resources.gold);
+        updateDisplay('wood', this.resources.wood);
+        updateDisplay('stone', this.resources.stone);
+        updateDisplay('shards', this.resources.shards);
+        updateDisplay('city-gold', this.resources.gold);
+        updateDisplay('city-wood', this.resources.wood);
+        updateDisplay('city-stone', this.resources.stone);
+        updateDisplay('defense-gold', this.resources.gold);
+        updateDisplay('shop-gold', this.resources.gold);
+        updateDisplay('shop-wood', this.resources.wood);
+        updateDisplay('shop-stone', this.resources.stone);
+        updateDisplay('shop-shards', this.resources.shards);
+
+        this.updatePopulationUI();
     }
 
     canAfford(cost) {
@@ -86,6 +187,7 @@ class GameState {
             currentWave: this.currentWave,
             health: this.health,
             maxHealth: this.maxHealth,
+            population: this.population,
             buildings: this.buildings.map(building => building.serialize()),
             towers: this.towers.map(tower => tower.serialize()),
             musicVolume: this.musicVolume,
@@ -112,8 +214,14 @@ class GameState {
                     this.maxHealth = gameData.maxHealth;
                 }
 
+                if (typeof gameData.population === 'number') {
+                    this.population = gameData.population;
+                }
+
                 if (Array.isArray(gameData.buildings)) {
-                    this.buildings = gameData.buildings.map(data => Building.fromData(data));
+                    this.buildings = gameData.buildings
+                        .map(data => Building.fromData(data))
+                        .filter(building => building instanceof Building);
                 }
                 if (Array.isArray(gameData.towers)) {
                     this.towers = gameData.towers
@@ -127,16 +235,26 @@ class GameState {
                 console.log('Failed to load saved game data');
             }
         }
+        this.recalculatePopulation();
         this.recalculateHealthFromBuildings();
         this.health = Math.min(this.health, this.maxHealth);
+        this.updatePopulationUI();
         this.refreshEnemyDamage();
     }
 
     recalculateHealthFromBuildings() {
-        const hospitals = this.buildings.filter(building => building.type === 'hospital').length;
         const previousMax = this.maxHealth;
-        const ratio = previousMax > 0 ? this.health / previousMax : 1;
-        this.maxHealth = Math.round(this.baseMaxHealth * (1 + hospitals * 0.15));
+        const ratio = previousMax > 0 ? Math.max(this.health / previousMax, 0) : 1;
+
+        const hospitalBonus = this.buildings.reduce((total, building) => {
+            if (building.type !== 'hospital' || typeof building.getHealthBonus !== 'function') {
+                return total;
+            }
+            return total + building.getHealthBonus();
+        }, 0);
+
+        const totalMultiplier = 1 + hospitalBonus;
+        this.maxHealth = Math.round(this.baseMaxHealth * totalMultiplier);
 
         if (!Number.isFinite(this.maxHealth) || this.maxHealth <= 0) {
             this.maxHealth = this.baseMaxHealth;
@@ -148,6 +266,28 @@ class GameState {
         }
 
         this.updateHealthUI();
+    }
+
+    recalculatePopulation() {
+        this.population = this.buildings.reduce((total, building) => {
+            if (typeof building.getPopulationContribution === 'function') {
+                return total + building.getPopulationContribution();
+            }
+            if (building.type === 'house') {
+                const level = typeof building.level === 'number' ? building.level : 1;
+                return total + (5 * level);
+            }
+            return total;
+        }, 0);
+
+        this.updatePopulationUI();
+    }
+
+    updatePopulationUI() {
+        const populationElement = document.getElementById('city-population');
+        if (populationElement) {
+            populationElement.textContent = this.population;
+        }
     }
 
     updateHealthUI() {
@@ -207,28 +347,41 @@ class GameState {
         } else {
             this.updateHealthUI();
         }
+        this.recalculatePopulation();
+        this.saveGameState();
+    }
+
+    handleBuildingUpdated(building) {
+        if (building.type === 'hospital') {
+            this.recalculateHealthFromBuildings();
+        } else {
+            this.updateHealthUI();
+        }
+        this.recalculatePopulation();
         this.saveGameState();
     }
 }
 
 class Building {
-    constructor(type, x, y) {
+    constructor(type, options = {}) {
         this.type = type;
-        this.x = x;
-        this.y = y;
-        this.level = 1;
-        this.productionPerMinute = this.getProductionPerMinute();
-        this.upkeepPerHour = this.getUpkeepPerHour();
-        this.lastProduction = Date.now();
-        this.resourceBuffer = {
+        this.id = options.id || `building-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+        this.tileIndex = options.tileIndex ?? null;
+        this.x = options.x ?? 0;
+        this.y = options.y ?? 0;
+        this.level = options.level ?? 1;
+        this.lastProduction = options.lastProduction || Date.now();
+        this.resourceBuffer = Object.assign({
             gold: 0,
             wood: 0,
             stone: 0,
             shards: 0
-        };
+        }, options.resourceBuffer || {});
+        this.baseProductionRates = this.getBaseProductionRates();
+        this.baseUpkeepRates = this.getBaseUpkeepPerHour();
     }
 
-    getProductionPerMinute() {
+    getBaseProductionRates() {
         const rates = {
             'lumber-mill': { wood: 10 },
             'quarry': { stone: 8 },
@@ -237,14 +390,36 @@ class Building {
         return rates[this.type] || {};
     }
 
-    getUpkeepPerHour() {
+    getBaseUpkeepPerHour() {
         const upkeep = {
             'hospital': { gold: 15, wood: 5, stone: 5 }
         };
         return upkeep[this.type] || {};
     }
 
+    getProductionPerMinute() {
+        const multiplier = this.level;
+        const rates = {};
+        Object.entries(this.baseProductionRates).forEach(([resource, value]) => {
+            rates[resource] = value * multiplier;
+        });
+        return rates;
+    }
+
+    getUpkeepPerHour() {
+        const multiplier = this.level;
+        const upkeep = {};
+        Object.entries(this.baseUpkeepRates).forEach(([resource, value]) => {
+            upkeep[resource] = value * multiplier;
+        });
+        return upkeep;
+    }
+
     getIcon() {
+        return Building.getIconForType(this.type);
+    }
+
+    static getIconForType(type) {
         const icons = {
             'house': '🏠',
             'lumber-mill': '🏭',
@@ -252,7 +427,30 @@ class Building {
             'barracks': '🏰',
             'hospital': '🏥'
         };
-        return icons[this.type] || '🏠';
+        return icons[type] || '🏠';
+    }
+
+    getPopulationContribution() {
+        if (this.type === 'house') {
+            return 5 * this.level;
+        }
+        return 0;
+    }
+
+    getHealthBonus() {
+        if (this.type !== 'hospital') {
+            return 0;
+        }
+        const baseBonus = 0.15;
+        const upgradeBonus = Math.max(0, this.level - 1) * 0.05;
+        return baseBonus + upgradeBonus;
+    }
+
+    getUpgradeCost(targetLevel) {
+        if (targetLevel <= this.level || targetLevel > BUILDING_MAX_LEVEL) {
+            return null;
+        }
+        return getBuildingCost(this.type, targetLevel);
     }
 
     produce() {
@@ -280,11 +478,11 @@ class Building {
             }
         };
 
-        Object.entries(this.productionPerMinute).forEach(([resource, rate]) => {
+        Object.entries(this.getProductionPerMinute()).forEach(([resource, rate]) => {
             applyChange(resource, rate * elapsedMinutes);
         });
 
-        Object.entries(this.upkeepPerHour).forEach(([resource, rate]) => {
+        Object.entries(this.getUpkeepPerHour()).forEach(([resource, rate]) => {
             applyChange(resource, -rate * elapsedHours);
         });
 
@@ -293,7 +491,9 @@ class Building {
 
     serialize() {
         return {
+            id: this.id,
             type: this.type,
+            tileIndex: this.tileIndex,
             x: this.x,
             y: this.y,
             level: this.level,
@@ -303,16 +503,19 @@ class Building {
     }
 
     static fromData(data = {}) {
-        const building = new Building(data.type, data.x, data.y);
-        building.level = data.level || 1;
-        building.lastProduction = data.lastProduction || Date.now();
-        building.resourceBuffer = data.resourceBuffer || {
-            gold: 0,
-            wood: 0,
-            stone: 0,
-            shards: 0
-        };
-        return building;
+        if (!data || !data.type) {
+            return null;
+        }
+
+        return new Building(data.type, {
+            id: data.id,
+            tileIndex: data.tileIndex ?? null,
+            x: data.x,
+            y: data.y,
+            level: data.level || 1,
+            lastProduction: data.lastProduction,
+            resourceBuffer: data.resourceBuffer
+        });
     }
 }
 
@@ -322,30 +525,22 @@ class Tower {
         this.x = x;
         this.y = y;
         this.id = options.id || `tower-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
-        this.damage = options.damage ?? this.getDamage();
-        this.range = options.range ?? this.getRange();
-        this.fireRate = options.fireRate ?? this.getFireRate();
+        this.level = options.level ?? 1;
         this.lastShot = options.lastShot ?? 0;
         this.target = null;
+        this.updateStats();
     }
 
-    getDamage() {
+    getBaseDamage() {
         const damages = {
             'archer': 25,
             'cannon': 50,
             'magic': 40
         };
-        let baseDamage = damages[this.type] || 25;
-        
-        // Apply power-up effect if active
-        if (game.activePowerUp === 'enhanced_damage') {
-            baseDamage = Math.floor(baseDamage * 1.3); // 30% more damage
-        }
-        
-        return baseDamage;
+        return damages[this.type] || 25;
     }
 
-    getRange() {
+    getBaseRange() {
         const ranges = {
             'archer': 80,
             'cannon': 120,
@@ -354,13 +549,37 @@ class Tower {
         return ranges[this.type] || 80;
     }
 
-    getFireRate() {
+    getBaseFireRate() {
         const rates = {
             'archer': 1000,
             'cannon': 2000,
             'magic': 1500
         };
         return rates[this.type] || 1000;
+    }
+
+    calculateDamage() {
+        let damage = this.getBaseDamage() * this.level;
+        if (game.activePowerUp === 'enhanced_damage') {
+            damage = Math.floor(damage * 1.3);
+        }
+        return damage;
+    }
+
+    calculateRange() {
+        return this.getBaseRange() + (this.level - 1) * 8;
+    }
+
+    calculateFireRate() {
+        const baseRate = this.getBaseFireRate();
+        const adjustedRate = baseRate * Math.pow(0.95, Math.max(0, this.level - 1));
+        return Math.max(300, Math.floor(adjustedRate));
+    }
+
+    updateStats() {
+        this.damage = this.calculateDamage();
+        this.range = this.calculateRange();
+        this.fireRate = this.calculateFireRate();
     }
 
     getIcon() {
@@ -408,6 +627,7 @@ class Tower {
             type: this.type,
             x: this.x,
             y: this.y,
+            level: this.level,
             damage: this.damage,
             range: this.range,
             fireRate: this.fireRate,
@@ -422,11 +642,10 @@ class Tower {
 
         const tower = new Tower(data.type, data.x ?? 0, data.y ?? 0, {
             id: data.id,
-            damage: data.damage,
-            range: data.range,
-            fireRate: data.fireRate,
+            level: data.level || 1,
             lastShot: data.lastShot
         });
+        tower.updateStats();
         tower.target = null;
         return tower;
     }
@@ -497,14 +716,51 @@ class Enemy {
 
     getReward() {
         const rewards = {
-            'goblin': { gold: 15 },
-            'orc': { gold: 35 },
-            'dragon': { gold: 75 },
-            'boss-goblin': { gold: 100 },
-            'boss-orc': { gold: 200 },
-            'boss-dragon': { gold: 500 }
+            'goblin': 20,
+            'orc': 45,
+            'dragon': 90,
+            'boss-goblin': 140,
+            'boss-orc': 260,
+            'boss-dragon': 600
         };
-        return rewards[this.type] || { gold: 15 };
+        const goldReward = rewards[this.type] ?? 20;
+        return { gold: goldReward };
+    }
+
+    getResourceDropAmount(resource) {
+        const baseAmount = RESOURCE_DROP_BASE_AMOUNTS[resource] || 0;
+        if (baseAmount === 0) {
+            return 0;
+        }
+
+        let multiplier = this.difficultyTier + 1;
+        if (this.type.startsWith('boss-')) {
+            multiplier += 1;
+        }
+
+        return Math.max(0, Math.round(baseAmount * multiplier));
+    }
+
+    generateDrops() {
+        const drops = {
+            gold: this.reward.gold,
+            wood: 0,
+            stone: 0,
+            shards: 0
+        };
+
+        if (Math.random() < RESOURCE_DROP_CHANCES.shards) {
+            drops.shards += 1;
+        }
+
+        const resourceRoll = Math.random();
+        if (resourceRoll < RESOURCE_DROP_CHANCES.wood) {
+            drops.wood += this.getResourceDropAmount('wood');
+        } else if (resourceRoll < RESOURCE_DROP_CHANCES.wood + RESOURCE_DROP_CHANCES.stone) {
+            drops.stone += this.getResourceDropAmount('stone');
+        }
+
+        return drops;
     }
 
     getIcon() {
@@ -682,6 +938,8 @@ function initializeGame() {
     document.getElementById('music-volume').value = game.musicVolume;
     document.getElementById('effects-volume').value = game.effectsVolume;
     game.updateHealthUI();
+    game.updatePopulationUI();
+    updateTowerCostDisplay();
 }
 
 function setupEventListeners() {
@@ -759,28 +1017,37 @@ function switchScreen(screenName) {
 }
 
 function buyItem(item) {
-    const costs = {
-        'house': { gold: 100, wood: 50, stone: 0, shards: 0 },
-        'lumber-mill': { gold: 200, wood: 100, stone: 0, shards: 0 },
-        'quarry': { gold: 300, wood: 0, stone: 50, shards: 0 },
+    const shardCosts = {
         'shard-1': { gold: 500, wood: 0, stone: 0, shards: 0 },
         'shard-5': { gold: 2000, wood: 0, stone: 0, shards: 0 },
         'shard-10': { gold: 3500, wood: 0, stone: 0, shards: 0 }
     };
 
-    const cost = costs[item];
-    if (game.canAfford(cost)) {
-        game.spendResources(cost);
-        
-        if (item.startsWith('shard-')) {
-            const shardAmount = parseInt(item.split('-')[1]);
-            game.addResources({ shards: shardAmount });
-            alert(`${shardAmount} shard(s) purchased successfully!`);
-        } else {
-            alert(`${item} purchased successfully!`);
-        }
+    let cost = null;
+    if (item.startsWith('shard-')) {
+        cost = shardCosts[item];
+    } else if (BUILDING_BASE_COSTS[item]) {
+        cost = getBuildingCost(item, 1);
+    }
+
+    if (!cost) {
+        alert('This item is not available for purchase.');
+        return;
+    }
+
+    if (!game.canAfford(cost)) {
+        alert(`Not enough resources! Requires ${formatResourceCost(cost)}.`);
+        return;
+    }
+
+    game.spendResources(cost);
+
+    if (item.startsWith('shard-')) {
+        const shardAmount = parseInt(item.split('-')[1], 10);
+        game.addResources({ shards: shardAmount });
+        alert(`${shardAmount} shard(s) purchased successfully!`);
     } else {
-        alert('Not enough resources!');
+        alert(`${getBuildingDisplayName(item)} purchased successfully!`);
     }
 }
 
@@ -795,6 +1062,8 @@ function generateCityGrid() {
         tile.addEventListener('click', () => placeBuilding(i));
         grid.appendChild(tile);
     }
+
+    renderCityBuildings();
 }
 
 function selectBuilding(buildingType) {
@@ -802,45 +1071,112 @@ function selectBuilding(buildingType) {
     document.querySelectorAll('.building-option').forEach(option => {
         option.style.borderColor = '#8b4513';
     });
-    document.querySelector(`[data-building="${buildingType}"]`).style.borderColor = '#d4af37';
+    const selectedOption = document.querySelector(`[data-building="${buildingType}"]`);
+    if (selectedOption) {
+        selectedOption.style.borderColor = '#d4af37';
+    }
 }
 
 function placeBuilding(index) {
+    const tile = document.querySelector(`[data-index="${index}"]`);
+    if (!tile) {
+        return;
+    }
+
+    const existingBuilding = game.buildings.find(building => building.tileIndex === index);
+    if (existingBuilding) {
+        attemptUpgradeBuilding(existingBuilding);
+        return;
+    }
+
     if (!game.selectedBuilding) {
         alert('Please select a building first!');
         return;
     }
 
-    const costs = {
-        'house': { gold: 100, wood: 50, stone: 0 },
-        'lumber-mill': { gold: 200, wood: 100, stone: 0 },
-        'quarry': { gold: 300, wood: 0, stone: 50 },
-        'barracks': { gold: 500, wood: 200, stone: 0 },
-        'hospital': { gold: 450, wood: 150, stone: 150 }
-    };
-
-    const cost = costs[game.selectedBuilding];
-    if (game.canAfford(cost)) {
-        const tile = document.querySelector(`[data-index="${index}"]`);
-        if (!tile.classList.contains('occupied')) {
-            game.spendResources(cost);
-            tile.classList.add('occupied');
-            tile.textContent = new Building(game.selectedBuilding, 0, 0).getIcon();
-
-            const building = new Building(game.selectedBuilding, 0, 0);
-            game.buildings.push(building);
-            game.handleBuildingAdded(building);
-
-            game.selectedBuilding = null;
-            document.querySelectorAll('.building-option').forEach(option => {
-                option.style.borderColor = '#8b4513';
-            });
-        } else {
-            alert('This tile is already occupied!');
-        }
-    } else {
-        alert('Not enough resources!');
+    const cost = getBuildingCost(game.selectedBuilding, 1);
+    if (!cost) {
+        alert('This building cannot be constructed.');
+        return;
     }
+
+    if (!game.canAfford(cost)) {
+        alert(`Not enough resources! Requires ${formatResourceCost(cost)}.`);
+        return;
+    }
+
+    game.spendResources(cost);
+
+    const building = new Building(game.selectedBuilding, { tileIndex: index });
+    game.buildings.push(building);
+    game.handleBuildingAdded(building);
+    renderCityBuildings();
+
+    game.selectedBuilding = null;
+    document.querySelectorAll('.building-option').forEach(option => {
+        option.style.borderColor = '#8b4513';
+    });
+}
+
+function attemptUpgradeBuilding(building) {
+    if (building.level >= BUILDING_MAX_LEVEL) {
+        alert(`${getBuildingDisplayName(building.type)} is already at Tier ${BUILDING_MAX_LEVEL}.`);
+        return;
+    }
+
+    const nextLevel = building.level + 1;
+    const upgradeCost = building.getUpgradeCost(nextLevel);
+    if (!upgradeCost) {
+        alert('Unable to upgrade this building further.');
+        return;
+    }
+
+    const costDescription = formatResourceCost(upgradeCost);
+    if (!game.canAfford(upgradeCost)) {
+        alert(`Not enough resources to upgrade. Requires ${costDescription}.`);
+        return;
+    }
+
+    const confirmUpgrade = confirm(`Upgrade ${getBuildingDisplayName(building.type)} to Tier ${nextLevel} for ${costDescription}?`);
+    if (!confirmUpgrade) {
+        return;
+    }
+
+    game.spendResources(upgradeCost);
+    building.level = nextLevel;
+    building.lastProduction = Date.now();
+    game.handleBuildingUpdated(building);
+    renderCityBuildings();
+
+    alert(`${getBuildingDisplayName(building.type)} upgraded to Tier ${nextLevel}!`);
+}
+
+function renderCityBuildings() {
+    const tiles = document.querySelectorAll('.city-tile');
+    tiles.forEach(tile => {
+        tile.classList.remove('occupied');
+        tile.innerHTML = '';
+        delete tile.dataset.buildingId;
+        tile.title = 'Empty Tile';
+    });
+
+    game.buildings.forEach(building => {
+        if (typeof building.tileIndex !== 'number') {
+            return;
+        }
+
+        const tile = document.querySelector(`[data-index="${building.tileIndex}"]`);
+        if (!tile) {
+            return;
+        }
+
+        tile.classList.add('occupied');
+        tile.dataset.buildingId = building.id;
+        tile.innerHTML = `<span class="tile-icon">${building.getIcon()}</span><span class="tile-tier">T${building.level}</span>`;
+        tile.title = `${getBuildingDisplayName(building.type)} - Tier ${building.level}`;
+    });
+
+    game.updatePopulationUI();
 }
 
 // Path layouts inspired by the dirt routes drawn in maps.png
@@ -1305,12 +1641,15 @@ function renderTowers() {
             return;
         }
 
+        tower.updateStats();
         const towerElement = document.createElement('div');
         towerElement.className = 'tower';
         towerElement.style.left = `${tower.x}px`;
         towerElement.style.top = `${tower.y}px`;
-        towerElement.textContent = tower.getIcon();
         towerElement.dataset.towerId = tower.id;
+        towerElement.dataset.tier = tower.level;
+        towerElement.title = `${getTowerDisplayName(tower.type)} - Tier ${tower.level}`;
+        towerElement.innerHTML = `<span class="tower-icon-display">${tower.getIcon()}</span><span class="tower-tier">T${tower.level}</span>`;
         towerElement.addEventListener('click', () => upgradeTower(tower));
 
         towerLayer.appendChild(towerElement);
@@ -1329,27 +1668,27 @@ function selectTower(towerType) {
 }
 
 function updateTowerCostDisplay() {
-    const costs = {
-        'archer': { gold: 150, wood: 0, stone: 0 },
-        'cannon': { gold: 300, wood: 0, stone: 0 },
-        'magic': { gold: 250, wood: 0, stone: 0 }
-    };
-    
     document.querySelectorAll('.tower-option').forEach(option => {
         const towerType = option.dataset.tower;
         const costInfo = option.querySelector('.tower-info p:last-child');
-        let cost = costs[towerType];
-        
+        if (!towerType || !costInfo) {
+            return;
+        }
+
+        const baseCost = getTowerCost(towerType, 1);
+        if (!baseCost) {
+            costInfo.textContent = 'Cost: N/A';
+            costInfo.style.color = '#f4e4bc';
+            return;
+        }
+
+        const displayCost = { ...baseCost };
         if (game.activePowerUp === 'cheaper_towers') {
-            cost = {
-                gold: Math.floor(cost.gold * 0.75),
-                wood: cost.wood,
-                stone: cost.stone
-            };
-            costInfo.textContent = `Cost: ${cost.gold} Gold (25% OFF!)`;
+            displayCost.gold = Math.floor(displayCost.gold * 0.75);
+            costInfo.textContent = `Cost: ${formatResourceCost(displayCost)} (Gold 25% OFF!)`;
             costInfo.style.color = '#32cd32';
         } else {
-            costInfo.textContent = `Cost: ${cost.gold} Gold`;
+            costInfo.textContent = `Cost: ${formatResourceCost(baseCost)}`;
             costInfo.style.color = '#f4e4bc';
         }
     });
@@ -1361,53 +1700,79 @@ function placeTower(x, y) {
         return;
     }
 
-    const costs = {
-        'archer': { gold: 150, wood: 0, stone: 0 },
-        'cannon': { gold: 300, wood: 0, stone: 0 },
-        'magic': { gold: 250, wood: 0, stone: 0 }
-    };
+    const baseCost = getTowerCost(game.selectedTower, 1);
+    if (!baseCost) {
+        alert('This tower cannot be constructed.');
+        return;
+    }
 
-    let cost = costs[game.selectedTower];
-    
+    const cost = { ...baseCost };
+
     // Apply power-up effect if active
     if (game.activePowerUp === 'cheaper_towers') {
-        cost = {
-            gold: Math.floor(cost.gold * 0.75), // 25% cheaper
-            wood: cost.wood,
-            stone: cost.stone
-        };
+        cost.gold = Math.floor(cost.gold * 0.75); // 25% cheaper on gold
     }
-    
-    if (game.canAfford(cost)) {
-        game.spendResources(cost);
-        
-        const tower = new Tower(game.selectedTower, x, y);
-        game.towers.push(tower);
 
-        renderTowers();
-
-        game.selectedTower = null;
-        document.querySelectorAll('.tower-option').forEach(option => {
-            option.style.borderColor = '#8b4513';
-        });
-
-        game.saveGameState();
-    } else {
-        alert('Not enough resources!');
+    if (!game.canAfford(cost)) {
+        alert(`Not enough resources! Requires ${formatResourceCost(cost)}.`);
+        return;
     }
+
+    game.spendResources(cost);
+
+    const tower = new Tower(game.selectedTower, x, y);
+    tower.updateStats();
+    game.towers.push(tower);
+
+    renderTowers();
+
+    game.selectedTower = null;
+    document.querySelectorAll('.tower-option').forEach(option => {
+        option.style.borderColor = '#8b4513';
+    });
+
+    game.saveGameState();
 }
 
 function upgradeTower(tower) {
-    const upgradeCost = { gold: 100, wood: 0, stone: 0 };
-    if (game.canAfford(upgradeCost)) {
-        game.spendResources(upgradeCost);
-        tower.damage += 10;
-        tower.range += 10;
-        alert('Tower upgraded!');
-        game.saveGameState();
-    } else {
-        alert('Not enough gold for upgrade!');
+    if (!(tower instanceof Tower)) {
+        return;
     }
+
+    if (tower.level >= TOWER_MAX_LEVEL) {
+        alert(`${getTowerDisplayName(tower.type)} is already at Tier ${TOWER_MAX_LEVEL}.`);
+        return;
+    }
+
+    const nextLevel = tower.level + 1;
+    const baseCost = getTowerCost(tower.type, nextLevel);
+    if (!baseCost) {
+        alert('Unable to upgrade this tower.');
+        return;
+    }
+
+    const cost = { ...baseCost };
+    if (game.activePowerUp === 'cheaper_towers') {
+        cost.gold = Math.floor(cost.gold * 0.75);
+    }
+
+    const costDescription = formatResourceCost(cost);
+    if (!game.canAfford(cost)) {
+        alert(`Not enough resources to upgrade. Requires ${costDescription}.`);
+        return;
+    }
+
+    const confirmUpgrade = confirm(`Upgrade ${getTowerDisplayName(tower.type)} to Tier ${nextLevel} for ${costDescription}?`);
+    if (!confirmUpgrade) {
+        return;
+    }
+
+    game.spendResources(cost);
+    tower.level = nextLevel;
+    tower.updateStats();
+    renderTowers();
+    game.saveGameState();
+    alert(`${getTowerDisplayName(tower.type)} upgraded to Tier ${nextLevel}!`);
 }
 
 function startWave() {
@@ -1500,6 +1865,9 @@ function endWave() {
     game.refreshEnemyDamage();
     game.consecutiveFailures = 0; // Reset failure counter on success
     game.activePowerUp = null; // Clear any active power-up
+    game.towers.forEach(tower => tower.updateStats());
+    renderTowers();
+    updateTowerCostDisplay();
     document.getElementById('current-wave').textContent = game.currentWave;
     document.getElementById('start-wave').textContent = 'Start Wave';
     document.getElementById('start-wave').disabled = false;
@@ -1676,10 +2044,14 @@ function selectPowerUp(powerUpId) {
     };
     
     alert(`Power-up activated: ${powerUpNames[powerUpId]}! This effect lasts for one wave only.`);
-    
+
     // Show power-up indicator
     showPowerUpIndicator(powerUpId);
-    
+
+    game.towers.forEach(tower => tower.updateStats());
+    renderTowers();
+    updateTowerCostDisplay();
+
     // Re-enable start wave button
     document.getElementById('start-wave').textContent = 'Start Wave';
     document.getElementById('start-wave').disabled = false;
@@ -1804,24 +2176,33 @@ function gameLoop() {
                 if (enemyIndex !== -1) {
                     const enemy = game.enemies[enemyIndex];
                     if (enemy.takeDamage(result.damage)) {
-                        // Enemy defeated - give reward
-                        game.addResources(enemy.reward);
+                        const drops = enemy.generateDrops();
+                        game.addResources(drops);
                         game.enemiesDefeated++;
-
-                        // Check for shard drop (0.05% chance for boss enemies)
-                        if (enemy.type.startsWith('boss-') && Math.random() < 0.0005) {
-                            game.addResources({ shards: 1 });
-                            showRewardNotification('+1 💎 SHARD!', enemy.x, enemy.y - 30);
-                        }
 
                         game.enemies.splice(enemyIndex, 1);
                         if (enemy.domId) {
                             document.getElementById(enemy.domId)?.remove();
                         }
 
-                        // Show reward notification
-                        const rewardText = `+${enemy.reward.gold} gold`;
-                        showRewardNotification(rewardText, enemy.x, enemy.y);
+                        const notifications = [];
+                        if (drops.gold) {
+                            notifications.push(`+${drops.gold} gold`);
+                        }
+                        if (drops.wood) {
+                            notifications.push(`+${drops.wood} wood`);
+                        }
+                        if (drops.stone) {
+                            notifications.push(`+${drops.stone} stone`);
+                        }
+                        if (drops.shards) {
+                            const shardLabel = drops.shards === 1 ? 'Shard' : 'Shards';
+                            notifications.push(`+${drops.shards} 💎 ${shardLabel}`);
+                        }
+
+                        notifications.forEach((text, index) => {
+                            showRewardNotification(text, enemy.x, enemy.y - index * 18);
+                        });
                     }
                 }
 
