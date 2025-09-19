@@ -13,6 +13,7 @@ class GameState {
         this.enemies = [];
         this.projectiles = [];
         this.enemyPath = [];
+        this.enemyPathLength = 0;
         this.currentWave = 1;
         this.lives = 10;
         this.gameRunning = false;
@@ -234,17 +235,25 @@ class Tower {
 }
 
 class Enemy {
-    constructor(type, path) {
+    constructor(type, path, totalPathLength) {
         this.type = type;
         this.path = path;
         this.pathIndex = 0;
-        this.x = path[0].x;
-        this.y = path[0].y;
+        this.segmentProgress = 0;
+        this.x = path[0]?.x || 0;
+        this.y = path[0]?.y || 0;
         this.health = this.getHealth();
         this.maxHealth = this.health;
-        this.speed = this.getSpeed();
+        this.totalPathLength = totalPathLength || calculatePathLength(path);
+        this.baseTravelTime = 30; // seconds to reach the end for baseline enemies
+        this.speedMultiplier = this.getSpeedMultiplier();
+        const baseSpeed = this.totalPathLength > 0
+            ? this.totalPathLength / this.baseTravelTime
+            : 0;
+        this.speed = baseSpeed * this.speedMultiplier;
         this.reward = this.getReward();
         this.lastMove = Date.now();
+        this.segmentLengths = this.buildSegmentLengths();
     }
 
     getHealth() {
@@ -257,20 +266,23 @@ class Enemy {
             'boss-dragon': 1000
         };
         let baseHealth = healths[this.type] || 50;
-        
+
         // Apply power-up effect if active
         if (game.activePowerUp === 'weakened_enemies') {
             baseHealth = Math.floor(baseHealth * 0.5); // 50% health
         }
-        
+
         return baseHealth;
     }
 
-    getSpeed() {
+    getSpeedMultiplier() {
         const speeds = {
             'goblin': 1,
-            'orc': 0.7,
-            'dragon': 0.5
+            'orc': 0.85,
+            'dragon': 0.7,
+            'boss-goblin': 0.95,
+            'boss-orc': 0.8,
+            'boss-dragon': 0.65
         };
         return speeds[this.type] || 1;
     }
@@ -299,18 +311,68 @@ class Enemy {
         return icons[this.type] || '👹';
     }
 
+    buildSegmentLengths() {
+        const lengths = [];
+        if (!Array.isArray(this.path)) {
+            return lengths;
+        }
+        for (let i = 0; i < this.path.length - 1; i++) {
+            const start = this.path[i];
+            const end = this.path[i + 1];
+            const dx = end.x - start.x;
+            const dy = end.y - start.y;
+            lengths.push(Math.sqrt(dx * dx + dy * dy));
+        }
+        return lengths;
+    }
+
     move() {
         const now = Date.now();
-        if (now - this.lastMove >= 100 / this.speed) {
-            this.lastMove = now;
-            if (this.pathIndex < this.path.length - 1) {
+        const deltaSeconds = (now - this.lastMove) / 1000;
+        this.lastMove = now;
+
+        if (!Array.isArray(this.path) || this.path.length < 2 || deltaSeconds <= 0) {
+            return 'moving';
+        }
+
+        let distanceToTravel = this.speed * deltaSeconds;
+
+        while (distanceToTravel > 0 && this.pathIndex < this.path.length - 1) {
+            const segmentLength = this.segmentLengths[this.pathIndex] || 0;
+
+            if (segmentLength === 0) {
                 this.pathIndex++;
+                this.segmentProgress = 0;
+                continue;
+            }
+
+            const remainingInSegment = segmentLength - this.segmentProgress;
+
+            if (distanceToTravel >= remainingInSegment) {
+                distanceToTravel -= remainingInSegment;
+                this.pathIndex++;
+                this.segmentProgress = 0;
+
+                if (this.pathIndex >= this.path.length - 1) {
+                    const lastPoint = this.path[this.path.length - 1];
+                    this.x = lastPoint.x;
+                    this.y = lastPoint.y;
+                    return 'reached_end';
+                }
+
                 this.x = this.path[this.pathIndex].x;
                 this.y = this.path[this.pathIndex].y;
             } else {
-                return 'reached_end';
+                this.segmentProgress += distanceToTravel;
+                const start = this.path[this.pathIndex];
+                const end = this.path[this.pathIndex + 1];
+                const t = this.segmentProgress / segmentLength;
+                this.x = start.x + (end.x - start.x) * t;
+                this.y = start.y + (end.y - start.y) * t;
+                distanceToTravel = 0;
             }
         }
+
         return 'moving';
     }
 
@@ -328,6 +390,7 @@ class Projectile {
         this.damage = damage;
         this.speed = 5;
         this.active = true;
+        this.id = `projectile-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
     }
 
     update() {
@@ -581,11 +644,18 @@ function clamp(value, min, max) {
 function ensureFieldLayers() {
     const field = document.getElementById('game-field');
 
+    let sceneryLayer = field.querySelector('.scenery-layer');
+    if (!sceneryLayer) {
+        sceneryLayer = document.createElement('div');
+        sceneryLayer.className = 'scenery-layer';
+        field.insertBefore(sceneryLayer, field.firstChild);
+    }
+
     let pathLayer = field.querySelector('.path-layer');
     if (!pathLayer) {
         pathLayer = document.createElement('div');
         pathLayer.className = 'path-layer';
-        field.insertBefore(pathLayer, field.firstChild);
+        field.insertBefore(pathLayer, sceneryLayer.nextSibling);
     }
 
     let towerLayer = field.querySelector('.tower-layer');
@@ -609,7 +679,7 @@ function ensureFieldLayers() {
         field.appendChild(projectileLayer);
     }
 
-    return { field, pathLayer, towerLayer, enemyLayer, projectileLayer };
+    return { field, sceneryLayer, pathLayer, towerLayer, enemyLayer, projectileLayer };
 }
 
 function buildPathPoints(width, height, marginX, marginY, templateIndex, jitter) {
@@ -652,6 +722,23 @@ function interpolatePath(points, step = 20) {
     }
 
     return interpolated;
+}
+
+function calculatePathLength(points) {
+    if (!Array.isArray(points) || points.length < 2) {
+        return 0;
+    }
+
+    let length = 0;
+    for (let i = 0; i < points.length - 1; i++) {
+        const start = points[i];
+        const end = points[i + 1];
+        const dx = end.x - start.x;
+        const dy = end.y - start.y;
+        length += Math.sqrt(dx * dx + dy * dy);
+    }
+
+    return length;
 }
 
 function drawDirtPath(layer, points, pathWidth, width, height) {
@@ -779,6 +866,108 @@ function addPathMarkers(layer, points) {
     layer.appendChild(endMarker);
 }
 
+function decorateField(layer, width, height, pathPoints, pathWidth) {
+    if (!layer) {
+        return;
+    }
+
+    layer.innerHTML = '';
+
+    const treeBandWidth = Math.min(width * 0.18, pathWidth * 1.6 + 80);
+    const leftBand = [20, Math.max(40, Math.min(treeBandWidth, width / 2 - 20))];
+    const rightBand = [Math.min(width - 40, Math.max(width - treeBandWidth, width / 2 + 20)), width - 20];
+    const treeCount = Math.max(10, Math.floor(width / 80));
+    const grassCount = Math.max(25, Math.floor(width / 30));
+    const clearance = (pathWidth / 2) + 30;
+
+    for (let i = 0; i < treeCount; i++) {
+        const tree = document.createElement('div');
+        tree.className = 'scenery tree';
+        const useLeft = i % 2 === 0;
+        const band = useLeft ? leftBand : rightBand;
+        if (!band || band[1] <= band[0]) {
+            continue;
+        }
+        const x = randomBetween(band[0], band[1]);
+        const y = randomBetween(50, height - 50);
+        const scale = randomBetween(0.85, 1.25);
+        tree.textContent = Math.random() > 0.5 ? '🌳' : '🌲';
+        tree.style.left = `${x}px`;
+        tree.style.top = `${y}px`;
+        tree.style.transform = `translate(-50%, -100%) scale(${scale.toFixed(2)})`;
+        layer.appendChild(tree);
+    }
+
+    let placedGrass = 0;
+    let attempts = 0;
+    while (placedGrass < grassCount && attempts < grassCount * 5) {
+        attempts++;
+        const grass = document.createElement('div');
+        grass.className = 'scenery grass';
+        const paddingX = Math.min(120, width / 5);
+        const paddingY = Math.min(100, height / 5);
+        const minX = Math.max(40, paddingX);
+        const maxX = Math.max(minX + 5, width - paddingX);
+        const minY = Math.max(40, paddingY);
+        const maxY = Math.max(minY + 5, height - paddingY);
+        const x = randomBetween(minX, maxX);
+        const y = randomBetween(minY, maxY);
+
+        if (isPointNearPath({ x, y }, pathPoints, clearance)) {
+            continue;
+        }
+
+        const rotation = randomBetween(-20, 20);
+        const scale = randomBetween(0.7, 1.3);
+        grass.style.left = `${x}px`;
+        grass.style.top = `${y}px`;
+        grass.style.transform = `translate(-50%, -50%) rotate(${rotation.toFixed(1)}deg) scale(${scale.toFixed(2)})`;
+        grass.style.filter = `hue-rotate(${randomBetween(-12, 12).toFixed(1)}deg) saturate(${randomBetween(0.9, 1.2).toFixed(2)})`;
+        layer.appendChild(grass);
+        placedGrass++;
+    }
+}
+
+function randomBetween(min, max) {
+    return Math.random() * (max - min) + min;
+}
+
+function isPointNearPath(point, pathPoints, clearance) {
+    if (!Array.isArray(pathPoints) || pathPoints.length < 2) {
+        return false;
+    }
+
+    for (let i = 0; i < pathPoints.length - 1; i++) {
+        const start = pathPoints[i];
+        const end = pathPoints[i + 1];
+        const distance = distancePointToSegment(point, start, end);
+        if (distance < clearance) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function distancePointToSegment(point, start, end) {
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    if (dx === 0 && dy === 0) {
+        const px = point.x - start.x;
+        const py = point.y - start.y;
+        return Math.sqrt(px * px + py * py);
+    }
+
+    const t = ((point.x - start.x) * dx + (point.y - start.y) * dy) / (dx * dx + dy * dy);
+    const clampedT = Math.max(0, Math.min(1, t));
+    const closestX = start.x + clampedT * dx;
+    const closestY = start.y + clampedT * dy;
+    const diffX = point.x - closestX;
+    const diffY = point.y - closestY;
+
+    return Math.sqrt(diffX * diffX + diffY * diffY);
+}
+
 function pickRandomPathTemplate(excludeIndex = null) {
     const indices = PATH_TEMPLATES.map((_, index) => index);
     const available = excludeIndex !== null && indices.length > 1
@@ -790,15 +979,15 @@ function pickRandomPathTemplate(excludeIndex = null) {
 
 function generateDefensePath(options = {}) {
     const { forceNew = false } = options;
-    const { field, pathLayer } = ensureFieldLayers();
+    const { field, sceneryLayer, pathLayer } = ensureFieldLayers();
 
     const fieldRect = field.getBoundingClientRect();
     const width = fieldRect.width || field.clientWidth || 800;
     const height = fieldRect.height || field.clientHeight || 500;
-    const marginBase = Math.min(width, height) * 0.12;
-    const marginX = Math.min(Math.max(60, marginBase), Math.max(width / 2 - 40, 20));
-    const marginY = Math.min(Math.max(60, marginBase), Math.max(height / 2 - 40, 20));
-    const pathWidth = Math.max(50, Math.min(width, height) * 0.12);
+    const marginBase = Math.min(width, height) * 0.08;
+    const marginX = Math.min(Math.max(40, marginBase), Math.max(width / 2 - 30, 16));
+    const marginY = Math.min(Math.max(40, marginBase), Math.max(height / 2 - 30, 16));
+    const pathWidth = Math.max(60, Math.min(width, height) * 0.14);
 
     if (!game.currentPathData || forceNew) {
         const templateIndex = pickRandomPathTemplate(game.lastPathTemplateIndex);
@@ -823,7 +1012,18 @@ function generateDefensePath(options = {}) {
     drawDirtPath(pathLayer, basePoints, pathWidth, width, height);
     addPathMarkers(pathLayer, basePoints);
 
-    game.enemyPath = interpolatePath(basePoints, 18);
+    game.enemyPath = interpolatePath(basePoints, 12);
+    game.enemyPathLength = calculatePathLength(game.enemyPath);
+
+    decorateField(sceneryLayer, width, height, game.enemyPath, pathWidth);
+}
+
+function clearBattlefieldEntities() {
+    const { enemyLayer, projectileLayer } = ensureFieldLayers();
+    enemyLayer.innerHTML = '';
+    projectileLayer.innerHTML = '';
+    game.enemies = [];
+    game.projectiles = [];
 }
 
 function selectTower(towerType) {
@@ -934,15 +1134,19 @@ function startWave() {
     if (!game.enemyPath || game.enemyPath.length < 2) {
         generateDefensePath();
     }
-    
+
+    clearBattlefieldEntities();
+
+    game.gameRunning = true;
     game.waveInProgress = true;
     game.enemiesSpawned = 0;
     game.enemiesDefeated = 0;
     game.waveStartTime = Date.now();
-    
+
     document.getElementById('start-wave').textContent = 'Wave in Progress';
     document.getElementById('start-wave').disabled = true;
-    
+    document.getElementById('pause-game').textContent = 'Pause';
+
     // Check if this is a boss wave (every 5 waves)
     const isBossWave = game.currentWave % 5 === 0;
     
@@ -970,7 +1174,7 @@ function startWave() {
 }
 
 function spawnEnemy(type) {
-    const enemy = new Enemy(type, game.enemyPath);
+    const enemy = new Enemy(type, game.enemyPath, game.enemyPathLength);
     game.enemies.push(enemy);
     
     const enemyElement = document.createElement('div');
@@ -988,13 +1192,16 @@ function spawnEnemy(type) {
 
 function endWave() {
     game.waveInProgress = false;
+    game.gameRunning = false;
+    clearBattlefieldEntities();
     game.currentWave++;
     game.consecutiveFailures = 0; // Reset failure counter on success
     game.activePowerUp = null; // Clear any active power-up
     document.getElementById('current-wave').textContent = game.currentWave;
     document.getElementById('start-wave').textContent = 'Start Wave';
     document.getElementById('start-wave').disabled = false;
-    
+    document.getElementById('pause-game').textContent = 'Pause';
+
     // Save game state
     game.saveGameState();
     
@@ -1009,12 +1216,15 @@ function endWave() {
 
 function handleWaveFailure() {
     game.waveInProgress = false;
+    game.gameRunning = false;
     game.consecutiveFailures++;
-    
+    clearBattlefieldEntities();
+
     // Apply 10% gold penalty
     const penalty = Math.floor(game.resources.gold * 0.1);
     game.resources.gold = Math.max(0, game.resources.gold - penalty);
     game.updateResources();
+    document.getElementById('pause-game').textContent = 'Pause';
     
     // Check if player is eligible for power-up
     if (game.consecutiveFailures >= 3) {
@@ -1029,8 +1239,19 @@ function handleWaveFailure() {
 }
 
 function togglePause() {
+    if (!game.waveInProgress && game.enemies.length === 0) {
+        return;
+    }
+
     game.gameRunning = !game.gameRunning;
     document.getElementById('pause-game').textContent = game.gameRunning ? 'Pause' : 'Resume';
+
+    if (game.gameRunning) {
+        const now = Date.now();
+        game.enemies.forEach(enemy => {
+            enemy.lastMove = now;
+        });
+    }
 }
 
 function resetGame() {
@@ -1199,32 +1420,39 @@ function startResourceProduction() {
 function gameLoop() {
     if (game.gameRunning) {
         // Update enemies
-        game.enemies.forEach((enemy, index) => {
+        for (let i = game.enemies.length - 1; i >= 0; i--) {
+            const enemy = game.enemies[i];
             const result = enemy.move();
+            const enemyElement = enemy.domId ? document.getElementById(enemy.domId) : null;
+
             if (result === 'reached_end') {
+                if (enemyElement) {
+                    enemyElement.remove();
+                }
+                game.enemies.splice(i, 1);
                 game.lives--;
                 document.getElementById('lives').textContent = game.lives;
-                game.enemies.splice(index, 1);
-                if (enemy.domId) {
-                    document.getElementById(enemy.domId)?.remove();
-                }
-                
+
                 if (game.lives <= 0) {
                     alert('Game Over!');
                     game.gameRunning = false;
                     game.waveInProgress = false;
+                    clearBattlefieldEntities();
                 } else {
                     // Wave failed - apply penalty and check for power-up
                     handleWaveFailure();
                 }
-            } else {
-                const enemyElement = document.getElementById(enemy.domId || `enemy-${index}`);
-                if (enemyElement) {
-                    enemyElement.style.left = enemy.x + 'px';
-                    enemyElement.style.top = enemy.y + 'px';
-                }
+                break;
+            } else if (enemyElement) {
+                enemyElement.style.left = `${enemy.x}px`;
+                enemyElement.style.top = `${enemy.y}px`;
             }
-        });
+        }
+
+        if (!game.gameRunning) {
+            requestAnimationFrame(gameLoop);
+            return;
+        }
 
         // Check if wave is complete (all enemies defeated)
         if (game.waveInProgress && game.enemies.length === 0 && game.enemiesSpawned > 0) {
@@ -1237,20 +1465,23 @@ function gameLoop() {
             if (target && tower.shoot(target)) {
                 const projectile = new Projectile(tower.x + 20, tower.y + 20, target, tower.damage);
                 game.projectiles.push(projectile);
-                
+
                 const projectileElement = document.createElement('div');
                 projectileElement.className = 'projectile';
-                projectileElement.style.left = projectile.x + 'px';
-                projectileElement.style.top = projectile.y + 'px';
-                projectileElement.id = `projectile-${game.projectiles.length - 1}`;
+                projectileElement.style.left = `${projectile.x}px`;
+                projectileElement.style.top = `${projectile.y}px`;
+                projectileElement.id = projectile.id;
                 const { projectileLayer } = ensureFieldLayers();
                 projectileLayer.appendChild(projectileElement);
             }
         });
 
         // Update projectiles
-        game.projectiles.forEach((projectile, index) => {
+        for (let i = game.projectiles.length - 1; i >= 0; i--) {
+            const projectile = game.projectiles[i];
             const result = projectile.update();
+            const projectileElement = document.getElementById(projectile.id);
+
             if (result.hit) {
                 const enemyIndex = game.enemies.findIndex(e => e === result.target);
                 if (enemyIndex !== -1) {
@@ -1259,38 +1490,42 @@ function gameLoop() {
                         // Enemy defeated - give reward
                         game.addResources(enemy.reward);
                         game.enemiesDefeated++;
-                        
+
                         // Check for shard drop (0.05% chance for boss enemies)
                         if (enemy.type.startsWith('boss-') && Math.random() < 0.0005) {
                             game.addResources({ shards: 1 });
                             showRewardNotification('+1 💎 SHARD!', enemy.x, enemy.y - 30);
                         }
-                        
+
                         game.enemies.splice(enemyIndex, 1);
                         if (enemy.domId) {
                             document.getElementById(enemy.domId)?.remove();
                         }
-                        
+
                         // Show reward notification
                         const rewardText = `+${enemy.reward.gold} gold`;
                         showRewardNotification(rewardText, enemy.x, enemy.y);
                     }
                 }
-                game.projectiles.splice(index, 1);
-                document.getElementById(`projectile-${index}`)?.remove();
-            } else if (projectile.active) {
-                const projectileElement = document.getElementById(`projectile-${index}`);
+
                 if (projectileElement) {
-                    projectileElement.style.left = projectile.x + 'px';
-                    projectileElement.style.top = projectile.y + 'px';
+                    projectileElement.remove();
+                }
+                game.projectiles.splice(i, 1);
+            } else if (projectile.active) {
+                if (projectileElement) {
+                    projectileElement.style.left = `${projectile.x}px`;
+                    projectileElement.style.top = `${projectile.y}px`;
                 }
             } else {
-                game.projectiles.splice(index, 1);
-                document.getElementById(`projectile-${index}`)?.remove();
+                if (projectileElement) {
+                    projectileElement.remove();
+                }
+                game.projectiles.splice(i, 1);
             }
-        });
+        }
     }
-    
+
     requestAnimationFrame(gameLoop);
 }
 
