@@ -18,7 +18,8 @@ class GameState {
         this.baseMaxHealth = 100;
         this.maxHealth = this.baseMaxHealth;
         this.health = this.maxHealth;
-        this.leakDamage = 10;
+        this.baseEnemyDamage = 10;
+        this.leakDamage = this.baseEnemyDamage;
         this.gameRunning = false;
         this.selectedBuilding = null;
         this.selectedTower = null;
@@ -35,6 +36,7 @@ class GameState {
         this.currentPathData = null;
         this.lastPathTemplateIndex = null;
         this.loadGameState();
+        this.refreshEnemyDamage();
     }
 
     updateResources() {
@@ -127,6 +129,7 @@ class GameState {
         }
         this.recalculateHealthFromBuildings();
         this.health = Math.min(this.health, this.maxHealth);
+        this.refreshEnemyDamage();
     }
 
     recalculateHealthFromBuildings() {
@@ -167,6 +170,21 @@ class GameState {
         }
 
         healthValue.textContent = `${Math.max(Math.round(this.health), 0)} / ${Math.round(this.maxHealth)}`;
+    }
+
+    getEnemyDamageMultiplier() {
+        const waveIndex = Math.max(this.currentWave - 1, 0);
+        return 1 + waveIndex * 0.01;
+    }
+
+    getEnemyAttackDamage() {
+        const multiplier = this.getEnemyDamageMultiplier();
+        const damage = this.baseEnemyDamage * multiplier;
+        return Math.round(damage * 100) / 100;
+    }
+
+    refreshEnemyDamage() {
+        this.leakDamage = this.getEnemyAttackDamage();
     }
 
     applyDamage(amount) {
@@ -436,6 +454,9 @@ class Enemy {
         this.lastMove = Date.now();
         this.segmentLengths = this.buildSegmentLengths();
         this.healthBarElement = null;
+        this.attacking = false;
+        this.attackCooldownMs = 1000;
+        this.lastAttackTime = 0;
     }
 
     getHealth() {
@@ -540,6 +561,10 @@ class Enemy {
         const deltaSeconds = (now - this.lastMove) / 1000;
         this.lastMove = now;
 
+        if (this.attacking) {
+            return 'attacking';
+        }
+
         if (!Array.isArray(this.path) || this.path.length < 2 || deltaSeconds <= 0) {
             return 'moving';
         }
@@ -589,6 +614,24 @@ class Enemy {
         this.health = Math.max(0, this.health - damage);
         this.updateHealthBar();
         return this.health <= 0;
+    }
+
+    startAttacking() {
+        if (!this.attacking) {
+            this.attacking = true;
+            this.lastAttackTime = Date.now() - this.attackCooldownMs;
+        }
+    }
+
+    canAttack(now) {
+        if (!this.attacking) {
+            return false;
+        }
+        return now - this.lastAttackTime >= this.attackCooldownMs;
+    }
+
+    recordAttack(now) {
+        this.lastAttackTime = now;
     }
 }
 
@@ -1372,6 +1415,8 @@ function startWave() {
 
     clearWaveStatusMessage();
 
+    game.refreshEnemyDamage();
+
     // Generate a fresh randomized path for this wave
     generateDefensePath({ forceNew: true });
 
@@ -1449,7 +1494,10 @@ function endWave() {
     game.waveInProgress = false;
     game.gameRunning = false;
     clearBattlefieldEntities();
+    game.health = game.maxHealth;
+    game.updateHealthUI();
     game.currentWave++;
+    game.refreshEnemyDamage();
     game.consecutiveFailures = 0; // Reset failure counter on success
     game.activePowerUp = null; // Clear any active power-up
     document.getElementById('current-wave').textContent = game.currentWave;
@@ -1459,7 +1507,7 @@ function endWave() {
 
     // Save game state
     game.saveGameState();
-    
+
     // Wave completion reward
     const waveReward = 50 + game.currentWave * 25;
     game.addResources({ gold: waveReward });
@@ -1469,27 +1517,33 @@ function endWave() {
     alert(`${waveType} ${game.currentWave - 1} completed! +${waveReward} gold bonus!`);
 }
 
-function handleWaveFailure() {
+function handleWaveFailure(options = {}) {
+    const { reason } = options;
     game.waveInProgress = false;
     game.gameRunning = false;
     game.consecutiveFailures++;
     clearBattlefieldEntities();
+    game.health = game.maxHealth;
+    game.updateHealthUI();
+    game.refreshEnemyDamage();
 
     // Apply 10% gold penalty
     const penalty = Math.floor(game.resources.gold * 0.1);
     game.resources.gold = Math.max(0, game.resources.gold - penalty);
     game.updateResources();
     document.getElementById('pause-game').textContent = 'Pause';
-    
+
+    const reasonPrefix = reason === 'health_depleted' ? 'City health reached 0! ' : '';
+
     // Check if player is eligible for power-up
     if (game.consecutiveFailures >= 3) {
-        const failureMessage = `Wave failed! -${penalty} gold penalty. Failures: ${game.consecutiveFailures}/3. Power-up unlocked!`;
+        const failureMessage = `${reasonPrefix}Wave failed! -${penalty} gold penalty. Failures: ${game.consecutiveFailures}/3. Power-up unlocked!`;
         showWaveStatusMessage(failureMessage, { type: 'failure', duration: 8000 });
         showPowerUpSelection();
     } else {
         document.getElementById('start-wave').textContent = 'Start Wave';
         document.getElementById('start-wave').disabled = false;
-        const failureMessage = `Wave failed! -${penalty} gold penalty. Failures: ${game.consecutiveFailures}/3`;
+        const failureMessage = `${reasonPrefix}Wave failed! -${penalty} gold penalty. Failures: ${game.consecutiveFailures}/3`;
         showWaveStatusMessage(failureMessage, { type: 'failure', duration: 6000 });
     }
 
@@ -1677,6 +1731,9 @@ function startResourceProduction() {
 // Game loop for tower defense
 function gameLoop() {
     if (game.gameRunning) {
+        const now = Date.now();
+        let playerDefeated = false;
+
         // Update enemies
         for (let i = game.enemies.length - 1; i >= 0; i--) {
             const enemy = game.enemies[i];
@@ -1684,26 +1741,29 @@ function gameLoop() {
             const enemyElement = enemy.domId ? document.getElementById(enemy.domId) : null;
 
             if (result === 'reached_end') {
-                if (enemyElement) {
-                    enemyElement.remove();
-                }
-                game.enemies.splice(i, 1);
-                const playerDefeated = game.applyDamage(game.leakDamage);
+                enemy.startAttacking();
+            }
 
-                if (playerDefeated) {
-                    alert('Game Over!');
-                    game.gameRunning = false;
-                    game.waveInProgress = false;
-                    clearBattlefieldEntities();
-                } else {
-                    // Wave failed - apply penalty and check for power-up
-                    handleWaveFailure();
-                }
-                break;
-            } else if (enemyElement) {
+            if (enemyElement) {
                 enemyElement.style.left = `${enemy.x}px`;
                 enemyElement.style.top = `${enemy.y}px`;
             }
+
+            if (enemy.attacking && enemy.canAttack(now)) {
+                enemy.recordAttack(now);
+                const defeated = game.applyDamage(game.getEnemyAttackDamage());
+
+                if (defeated) {
+                    playerDefeated = true;
+                    break;
+                }
+            }
+        }
+
+        if (playerDefeated) {
+            handleWaveFailure({ reason: 'health_depleted' });
+            requestAnimationFrame(gameLoop);
+            return;
         }
 
         if (!game.gameRunning) {
