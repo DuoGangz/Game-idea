@@ -3,6 +3,8 @@
 const BUILDING_MAX_LEVEL = 5;
 const TOWER_MAX_LEVEL = 5;
 
+const RESOURCE_TYPES = ['gold', 'wood', 'stone', 'shards', 'food'];
+
 const BUILDING_BASE_COSTS = {
     'house': { gold: 100, wood: 50, stone: 0 },
     'lumber-mill': { gold: 200, wood: 100, stone: 0 },
@@ -10,6 +12,13 @@ const BUILDING_BASE_COSTS = {
     'farm': { gold: 150, wood: 75, stone: 0 },
     'barracks': { gold: 300, wood: 10, stone: 10 },
     'hospital': { gold: 450, wood: 150, stone: 150 }
+};
+
+const SHARD_UPGRADE_REQUIREMENTS = {
+    2: 5,
+    3: 20,
+    4: 50,
+    5: 100
 };
 
 const BUILDING_CITIZEN_REQUIREMENTS = {
@@ -57,8 +66,8 @@ const RESOURCE_DROP_BASE_AMOUNTS = {
 };
 
 function multiplyCost(cost = {}, multiplier = 1) {
-const result = { gold: 0, wood: 0, stone: 0, shards: 0, food: 0 };
-    Object.keys(result).forEach(resource => {
+    const result = { gold: 0, wood: 0, stone: 0, shards: 0, food: 0 };
+    RESOURCE_TYPES.forEach(resource => {
         if (typeof cost[resource] === 'number') {
             result[resource] = Math.round(cost[resource] * multiplier);
         }
@@ -66,12 +75,24 @@ const result = { gold: 0, wood: 0, stone: 0, shards: 0, food: 0 };
     return result;
 }
 
+function getShardRequirementForTier(tier = 1) {
+    if (tier <= 1) {
+        return 0;
+    }
+    return SHARD_UPGRADE_REQUIREMENTS[tier] || 0;
+}
+
 function getBuildingCost(type, tier = 1) {
     const base = BUILDING_BASE_COSTS[type];
     if (!base) {
         return null;
     }
-    return multiplyCost(base, tier);
+    const cost = multiplyCost(base, tier);
+    const shardRequirement = getShardRequirementForTier(tier);
+    if (shardRequirement > 0) {
+        cost.shards = (cost.shards || 0) + shardRequirement;
+    }
+    return cost;
 }
 
 function getTowerCost(type, tier = 1) {
@@ -79,7 +100,12 @@ function getTowerCost(type, tier = 1) {
     if (!base) {
         return null;
     }
-    return multiplyCost(base, tier);
+    const cost = multiplyCost(base, tier);
+    const shardRequirement = getShardRequirementForTier(tier);
+    if (shardRequirement > 0) {
+        cost.shards = (cost.shards || 0) + shardRequirement;
+    }
+    return cost;
 }
 
 function formatResourceCost(cost = {}) {
@@ -124,14 +150,54 @@ function getTowerDisplayName(type) {
     return names[type] || type;
 }
 
+function accumulateResourceCosts(total = {}, cost = {}) {
+    RESOURCE_TYPES.forEach(resource => {
+        const amount = Math.max(0, cost[resource] || 0);
+        if (amount > 0) {
+            total[resource] = (total[resource] || 0) + amount;
+        }
+    });
+    return total;
+}
+
+function getTotalBuildingInvestment(type, level = 1) {
+    const total = { gold: 0, wood: 0, stone: 0, shards: 0, food: 0 };
+    for (let tier = 1; tier <= level; tier++) {
+        const tierCost = getBuildingCost(type, tier);
+        if (tierCost) {
+            accumulateResourceCosts(total, tierCost);
+        }
+    }
+    return total;
+}
+
+function getRefundFromInvestment(cost = {}, refundRate = 0.5) {
+    const refund = {};
+    RESOURCE_TYPES.forEach(resource => {
+        const amount = cost[resource] || 0;
+        if (amount > 0) {
+            refund[resource] = Math.max(0, Math.floor(amount * refundRate));
+        }
+    });
+    return refund;
+}
+
+function getBuildingRefund(building) {
+    if (!(building instanceof Building)) {
+        return {};
+    }
+    const investment = getTotalBuildingInvestment(building.type, building.level);
+    return getRefundFromInvestment(investment, 0.5);
+}
+
 class GameState {
     constructor() {
         this.resources = {
-            gold: 1000,
-            wood: 500,
-            stone: 300,
+            gold: 500,
+            wood: 50,
+            stone: 50,
             shards: 0,
-            food: 200
+            food: 50
         };
         this.population = STARTING_CITIZENS;
         this.populationCapacity = 0;
@@ -187,8 +253,10 @@ class GameState {
         updateDisplay('city-wood', this.resources.wood);
         updateDisplay('city-stone', this.resources.stone);
         updateDisplay('city-food', this.resources.food);
+        updateDisplay('city-shards', this.resources.shards);
         updateDisplay('defense-gold', this.resources.gold);
         updateDisplay('defense-food', this.resources.food);
+        updateDisplay('defense-shards', this.resources.shards);
         updateDisplay('shop-gold', this.resources.gold);
         updateDisplay('shop-wood', this.resources.wood);
         updateDisplay('shop-stone', this.resources.stone);
@@ -268,10 +336,13 @@ class GameState {
         if (savedData) {
             try {
                 const gameData = JSON.parse(savedData);
-                this.resources = gameData.resources || this.resources;
-                if (typeof this.resources.food !== 'number') {
-                    this.resources.food = 200;
-                }
+                this.resources = Object.assign({}, this.resources, gameData.resources || {});
+                const defaultResources = { gold: 500, wood: 50, stone: 50, shards: 0, food: 50 };
+                RESOURCE_TYPES.forEach(resource => {
+                    if (typeof this.resources[resource] !== 'number') {
+                        this.resources[resource] = defaultResources[resource] ?? 0;
+                    }
+                });
                 this.currentWave = gameData.currentWave || this.currentWave;
                 if (typeof gameData.health === 'number') {
                     this.health = gameData.health;
@@ -666,6 +737,12 @@ class GameState {
     }
 
     handleBuildingUpdated(building) {
+        this.recalculatePopulation();
+        this.updateHealthUI();
+        this.saveGameState();
+    }
+
+    handleBuildingRemoved(building) {
         this.recalculatePopulation();
         this.updateHealthUI();
         this.saveGameState();
@@ -1426,7 +1503,7 @@ function placeBuilding(index) {
 
     const existingBuilding = game.buildings.find(building => building.tileIndex === index);
     if (existingBuilding) {
-        attemptUpgradeBuilding(existingBuilding);
+        handleExistingBuildingClick(existingBuilding);
         return;
     }
 
@@ -1499,6 +1576,74 @@ function attemptUpgradeBuilding(building) {
     renderCityBuildings();
 
     alert(`${getBuildingDisplayName(building.type)} upgraded to Tier ${nextLevel}!`);
+}
+
+function handleExistingBuildingClick(building) {
+    if (!(building instanceof Building)) {
+        return;
+    }
+
+    const displayName = getBuildingDisplayName(building.type);
+    const options = [];
+    const refundPreview = formatResourceCost(getBuildingRefund(building));
+
+    if (building.level < BUILDING_MAX_LEVEL) {
+        options.push('U) Upgrade');
+    }
+    options.push(`D) Destroy (Refund ${refundPreview})`);
+
+    const promptMessage = [
+        `${displayName} — Tier ${building.level}`,
+        'Choose an action:',
+        ...options
+    ].join('\n');
+
+    const choice = prompt(promptMessage);
+    if (!choice) {
+        return;
+    }
+
+    const normalized = choice.trim().toLowerCase();
+    if (normalized.startsWith('d')) {
+        destroyBuilding(building);
+    } else if (normalized.startsWith('u') && building.level < BUILDING_MAX_LEVEL) {
+        attemptUpgradeBuilding(building);
+    }
+}
+
+function destroyBuilding(building) {
+    if (!(building instanceof Building)) {
+        return;
+    }
+
+    const displayName = getBuildingDisplayName(building.type);
+    const refund = getBuildingRefund(building);
+    const refundDescription = formatResourceCost(refund);
+    const confirmDestroy = confirm(`Destroy ${displayName} (Tier ${building.level}) and recover ${refundDescription}?`);
+    if (!confirmDestroy) {
+        return;
+    }
+
+    const index = game.buildings.findIndex(existing => existing.id === building.id);
+    if (index === -1) {
+        return;
+    }
+
+    game.buildings.splice(index, 1);
+    game.handleBuildingRemoved(building);
+    renderCityBuildings();
+
+    const hasRefund = Object.values(refund).some(amount => amount > 0);
+    if (hasRefund) {
+        game.addResources(refund);
+    } else {
+        game.updateResources();
+    }
+
+    const message = hasRefund
+        ? `${displayName} destroyed. Refunded ${refundDescription}.`
+        : `${displayName} destroyed.`;
+    alert(message);
 }
 
 function renderCityBuildings() {

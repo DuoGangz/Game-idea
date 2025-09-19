@@ -437,6 +437,14 @@ body {
     font-size: 1.5rem;
 }
 
+.upgrade-note {
+    font-size: 0.95rem;
+    color: #f9e8c5;
+    margin-bottom: 1rem;
+    line-height: 1.4;
+    font-style: italic;
+}
+
 .building-options {
     display: flex;
     flex-direction: column;
