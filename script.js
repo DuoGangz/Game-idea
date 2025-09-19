@@ -15,7 +15,10 @@ class GameState {
         this.enemyPath = [];
         this.enemyPathLength = 0;
         this.currentWave = 1;
-        this.lives = 10;
+        this.baseMaxHealth = 100;
+        this.maxHealth = this.baseMaxHealth;
+        this.health = this.maxHealth;
+        this.leakDamage = 10;
         this.gameRunning = false;
         this.selectedBuilding = null;
         this.selectedTower = null;
@@ -79,8 +82,9 @@ class GameState {
         const gameData = {
             resources: this.resources,
             currentWave: this.currentWave,
-            lives: this.lives,
-            buildings: this.buildings,
+            health: this.health,
+            maxHealth: this.maxHealth,
+            buildings: this.buildings.map(building => building.serialize()),
             towers: this.towers,
             musicVolume: this.musicVolume,
             effectsVolume: this.effectsVolume,
@@ -96,8 +100,19 @@ class GameState {
                 const gameData = JSON.parse(savedData);
                 this.resources = gameData.resources || this.resources;
                 this.currentWave = gameData.currentWave || this.currentWave;
-                this.lives = gameData.lives || this.lives;
-                this.buildings = gameData.buildings || this.buildings;
+                if (typeof gameData.health === 'number') {
+                    this.health = gameData.health;
+                } else if (typeof gameData.lives === 'number') {
+                    this.health = gameData.lives * this.leakDamage;
+                }
+
+                if (typeof gameData.maxHealth === 'number') {
+                    this.maxHealth = gameData.maxHealth;
+                }
+
+                if (Array.isArray(gameData.buildings)) {
+                    this.buildings = gameData.buildings.map(data => Building.fromData(data));
+                }
                 this.towers = gameData.towers || this.towers;
                 this.musicVolume = gameData.musicVolume || this.musicVolume;
                 this.effectsVolume = gameData.effectsVolume || this.effectsVolume;
@@ -106,6 +121,71 @@ class GameState {
                 console.log('Failed to load saved game data');
             }
         }
+        this.recalculateHealthFromBuildings();
+        this.health = Math.min(this.health, this.maxHealth);
+    }
+
+    recalculateHealthFromBuildings() {
+        const hospitals = this.buildings.filter(building => building.type === 'hospital').length;
+        const previousMax = this.maxHealth;
+        const ratio = previousMax > 0 ? this.health / previousMax : 1;
+        this.maxHealth = Math.round(this.baseMaxHealth * (1 + hospitals * 0.15));
+
+        if (!Number.isFinite(this.maxHealth) || this.maxHealth <= 0) {
+            this.maxHealth = this.baseMaxHealth;
+        }
+
+        this.health = Math.min(this.maxHealth, Math.round(this.maxHealth * ratio));
+        if (this.health <= 0) {
+            this.health = this.maxHealth;
+        }
+
+        this.updateHealthUI();
+    }
+
+    updateHealthUI() {
+        const healthFill = document.getElementById('health-fill');
+        const healthValue = document.getElementById('health-value');
+
+        if (!healthFill || !healthValue) {
+            return;
+        }
+
+        const ratio = this.maxHealth > 0 ? Math.max(this.health / this.maxHealth, 0) : 0;
+        healthFill.style.width = `${(ratio * 100).toFixed(1)}%`;
+
+        if (ratio <= 0.25) {
+            healthFill.style.backgroundColor = '#d93025';
+        } else if (ratio <= 0.6) {
+            healthFill.style.backgroundColor = '#f9a825';
+        } else {
+            healthFill.style.backgroundColor = '#4caf50';
+        }
+
+        healthValue.textContent = `${Math.max(Math.round(this.health), 0)} / ${Math.round(this.maxHealth)}`;
+    }
+
+    applyDamage(amount) {
+        const damage = Math.max(0, amount);
+
+        if (damage === 0) {
+            return false;
+        }
+
+        this.health = Math.max(0, this.health - damage);
+        this.updateHealthUI();
+        this.saveGameState();
+
+        return this.health <= 0;
+    }
+
+    handleBuildingAdded(building) {
+        if (building.type === 'hospital') {
+            this.recalculateHealthFromBuildings();
+        } else {
+            this.updateHealthUI();
+        }
+        this.saveGameState();
     }
 }
 
@@ -115,11 +195,18 @@ class Building {
         this.x = x;
         this.y = y;
         this.level = 1;
-        this.productionRate = this.getProductionRate();
+        this.productionPerMinute = this.getProductionPerMinute();
+        this.upkeepPerHour = this.getUpkeepPerHour();
         this.lastProduction = Date.now();
+        this.resourceBuffer = {
+            gold: 0,
+            wood: 0,
+            stone: 0,
+            shards: 0
+        };
     }
 
-    getProductionRate() {
+    getProductionPerMinute() {
         const rates = {
             'lumber-mill': { wood: 10 },
             'quarry': { stone: 8 },
@@ -128,23 +215,82 @@ class Building {
         return rates[this.type] || {};
     }
 
+    getUpkeepPerHour() {
+        const upkeep = {
+            'hospital': { gold: 15, wood: 5, stone: 5 }
+        };
+        return upkeep[this.type] || {};
+    }
+
     getIcon() {
         const icons = {
             'house': '🏠',
             'lumber-mill': '🏭',
             'quarry': '⛏️',
-            'barracks': '🏰'
+            'barracks': '🏰',
+            'hospital': '🏥'
         };
         return icons[this.type] || '🏠';
     }
 
     produce() {
         const now = Date.now();
-        if (now - this.lastProduction >= 60000) { // 1 minute
-            this.lastProduction = now;
-            return this.productionRate;
+        const elapsedMinutes = (now - this.lastProduction) / 60000;
+        if (elapsedMinutes < 1) {
+            return {};
         }
-        return {};
+
+        this.lastProduction = now;
+        const elapsedHours = elapsedMinutes / 60;
+        const changes = {};
+
+        const applyChange = (resource, change) => {
+            if (!change) {
+                return;
+            }
+
+            this.resourceBuffer[resource] = (this.resourceBuffer[resource] || 0) + change;
+            const wholeUnits = Math.trunc(this.resourceBuffer[resource]);
+
+            if (wholeUnits !== 0) {
+                changes[resource] = (changes[resource] || 0) + wholeUnits;
+                this.resourceBuffer[resource] -= wholeUnits;
+            }
+        };
+
+        Object.entries(this.productionPerMinute).forEach(([resource, rate]) => {
+            applyChange(resource, rate * elapsedMinutes);
+        });
+
+        Object.entries(this.upkeepPerHour).forEach(([resource, rate]) => {
+            applyChange(resource, -rate * elapsedHours);
+        });
+
+        return changes;
+    }
+
+    serialize() {
+        return {
+            type: this.type,
+            x: this.x,
+            y: this.y,
+            level: this.level,
+            lastProduction: this.lastProduction,
+            resourceBuffer: this.resourceBuffer
+        };
+    }
+
+    static fromData(data = {}) {
+        const building = new Building(data.type, data.x, data.y);
+        building.level = data.level || 1;
+        building.lastProduction = data.lastProduction || Date.now();
+        building.resourceBuffer = data.resourceBuffer || {
+            gold: 0,
+            wood: 0,
+            stone: 0,
+            shards: 0
+        };
+        return building;
     }
 }
 
@@ -250,7 +396,7 @@ class Enemy {
         this.speedMultiplier = this.getSpeedMultiplier();
         const baseSpeed = this.totalPathLength > 0
             ? this.totalPathLength / this.baseTravelTimeSeconds
-            : 0;
+            : 20;
         this.speed = baseSpeed * this.speedMultiplier;
         this.reward = this.getReward();
         this.lastMove = Date.now();
@@ -456,9 +602,9 @@ document.addEventListener('DOMContentLoaded', function() {
 function initializeGame() {
     game.updateResources();
     document.getElementById('current-wave').textContent = game.currentWave;
-    document.getElementById('lives').textContent = game.lives;
     document.getElementById('music-volume').value = game.musicVolume;
     document.getElementById('effects-volume').value = game.effectsVolume;
+    game.updateHealthUI();
 }
 
 function setupEventListeners() {
@@ -592,7 +738,8 @@ function placeBuilding(index) {
         'house': { gold: 100, wood: 50, stone: 0 },
         'lumber-mill': { gold: 200, wood: 100, stone: 0 },
         'quarry': { gold: 300, wood: 0, stone: 50 },
-        'barracks': { gold: 500, wood: 200, stone: 0 }
+        'barracks': { gold: 500, wood: 200, stone: 0 },
+        'hospital': { gold: 450, wood: 150, stone: 150 }
     };
 
     const cost = costs[game.selectedBuilding];
@@ -602,10 +749,11 @@ function placeBuilding(index) {
             game.spendResources(cost);
             tile.classList.add('occupied');
             tile.textContent = new Building(game.selectedBuilding, 0, 0).getIcon();
-            
+
             const building = new Building(game.selectedBuilding, 0, 0);
             game.buildings.push(building);
-            
+            game.handleBuildingAdded(building);
+
             game.selectedBuilding = null;
             document.querySelectorAll('.building-option').forEach(option => {
                 option.style.borderColor = '#8b4513';
@@ -1045,6 +1193,20 @@ function generateDefensePath(options = {}) {
     game.enemyPath = interpolatePath(basePoints, 12);
     game.enemyPathLength = calculatePathLength(game.enemyPath);
 
+    if (!Array.isArray(game.enemyPath) || game.enemyPath.length < 2 || game.enemyPathLength <= 0) {
+        const fallbackPoints = [
+            { x: marginX, y: height / 2 },
+            { x: width - marginX, y: height / 2 }
+        ];
+
+        pathLayer.innerHTML = '';
+        drawDirtPath(pathLayer, fallbackPoints, pathWidth, width, height);
+        addPathMarkers(pathLayer, fallbackPoints);
+
+        game.enemyPath = interpolatePath(fallbackPoints, 12);
+        game.enemyPathLength = calculatePathLength(game.enemyPath);
+    }
+
     decorateField(sceneryLayer, width, height, game.enemyPath, pathWidth);
 }
 
@@ -1174,6 +1336,7 @@ function startWave() {
     game.enemiesSpawned = 0;
     game.enemiesDefeated = 0;
     game.waveStartTime = Date.now();
+    game.updateHealthUI();
 
     document.getElementById('start-wave').textContent = 'Wave in Progress';
     document.getElementById('start-wave').disabled = true;
@@ -1207,6 +1370,7 @@ function startWave() {
 
 function spawnEnemy(type) {
     const enemy = new Enemy(type, game.enemyPath, game.enemyPathLength);
+    enemy.lastMove = Date.now();
     game.enemies.push(enemy);
     
     const enemyElement = document.createElement('div');
@@ -1452,7 +1616,7 @@ function startResourceProduction() {
     setInterval(() => {
         game.buildings.forEach(building => {
             const production = building.produce();
-            if (production) {
+            if (production && Object.keys(production).length > 0) {
                 game.addResources(production);
             }
         });
@@ -1473,10 +1637,9 @@ function gameLoop() {
                     enemyElement.remove();
                 }
                 game.enemies.splice(i, 1);
-                game.lives--;
-                document.getElementById('lives').textContent = game.lives;
+                const playerDefeated = game.applyDamage(game.leakDamage);
 
-                if (game.lives <= 0) {
+                if (playerDefeated) {
                     alert('Game Over!');
                     game.gameRunning = false;
                     game.waveInProgress = false;

@@ -386,6 +386,55 @@ body {
     align-items: center;
 }
 
+.health-display {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.35rem 0.75rem;
+    border-radius: 999px;
+    border: 2px solid rgba(212, 175, 55, 0.4);
+    background: rgba(26, 15, 10, 0.6);
+    box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.35), 0 0 12px rgba(212, 175, 55, 0.2);
+    flex: 0 0 auto;
+}
+
+.health-label {
+    color: #f4e4bc;
+    font-size: 1rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.health-bar {
+    position: relative;
+    width: 180px;
+    height: 16px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: rgba(84, 44, 20, 0.6);
+    border: 2px solid rgba(212, 175, 55, 0.4);
+    box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.45);
+}
+
+.health-bar-fill {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 100%;
+    background: #4caf50;
+    border-radius: 999px;
+    transition: width 0.3s ease, background-color 0.3s ease;
+    box-shadow: inset 0 1px 3px rgba(255, 255, 255, 0.25);
+}
+
+#health-value {
+    font-size: 1rem;
+    color: #f4e4bc;
+    min-width: 90px;
+    text-align: right;
+}
+
 .defense-info .resource {
     margin: 0;
 }
@@ -753,6 +802,22 @@ body {
     .resources, .city-resources, .defense-info, .shop-resources {
         flex-direction: column;
         gap: 0.5rem;
+    }
+
+    .health-display {
+        width: 100%;
+        justify-content: space-between;
+        border-radius: 12px;
+    }
+
+    .health-bar {
+        flex: 1;
+        width: 100%;
+        margin: 0 0.5rem;
+    }
+
+    #health-value {
+        text-align: center;
     }
 }
 

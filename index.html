@@ -156,6 +156,15 @@
                                 <p>Cost: 500 Gold, 200 Wood</p>
                             </div>
                         </div>
+                        <div class="building-option" data-building="hospital">
+                            <div class="building-icon">🏥</div>
+                            <div class="building-info">
+                                <h4>Hospital</h4>
+                                <p>+15% Max Health</p>
+                                <p>Upkeep: 15 Gold, 5 Wood, 5 Stone per hour</p>
+                                <p>Cost: 450 Gold, 150 Wood, 150 Stone</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -167,7 +176,13 @@
                 <h2>Tower Defense</h2>
                 <div class="defense-info">
                     <span>Wave: <span id="current-wave">1</span></span>
-                    <span>Lives: <span id="lives">10</span></span>
+                    <div class="health-display">
+                        <span class="health-label">Health:</span>
+                        <div class="health-bar">
+                            <div class="health-bar-fill" id="health-fill"></div>
+                        </div>
+                        <span id="health-value">100 / 100</span>
+                    </div>
                     <span class="resource gold">Gold: <span id="defense-gold">1000</span></span>
                 </div>
             </div>
