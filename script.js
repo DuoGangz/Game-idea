@@ -245,10 +245,11 @@ class Enemy {
         this.health = this.getHealth();
         this.maxHealth = this.health;
         this.totalPathLength = totalPathLength || calculatePathLength(path);
-        this.baseTravelTime = 30; // seconds to reach the end for baseline enemies
+        this.baseTravelTimeSeconds = 30; // weakest enemies reach the end in 30 seconds
+        this.difficultyTier = this.getDifficultyTier();
         this.speedMultiplier = this.getSpeedMultiplier();
         const baseSpeed = this.totalPathLength > 0
-            ? this.totalPathLength / this.baseTravelTime
+            ? this.totalPathLength / this.baseTravelTimeSeconds
             : 0;
         this.speed = baseSpeed * this.speedMultiplier;
         this.reward = this.getReward();
@@ -276,25 +277,21 @@ class Enemy {
         return baseHealth;
     }
 
-    getSpeedMultiplier() {
-        const health = this.maxHealth;
+    getDifficultyTier() {
+        const tiers = {
+            'goblin': 0,
+            'boss-goblin': 1,
+            'orc': 1,
+            'boss-orc': 2,
+            'dragon': 2,
+            'boss-dragon': 3
+        };
+        return tiers[this.type] ?? 0;
+    }
 
-        if (health >= 1000) {
-            return 0.25;
-        }
-        if (health >= 500) {
-            return 0.35;
-        }
-        if (health >= 300) {
-            return 0.45;
-        }
-        if (health >= 200) {
-            return 0.6;
-        }
-        if (health >= 100) {
-            return 0.75;
-        }
-        return 1;
+    getSpeedMultiplier() {
+        const slowdownFactor = 1 + (this.difficultyTier * 0.1);
+        return slowdownFactor > 0 ? 1 / slowdownFactor : 1;
     }
 
     getReward() {
