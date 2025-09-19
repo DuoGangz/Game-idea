@@ -129,6 +129,16 @@ body {
     gap: 1rem;
 }
 
+.setting-item.single-action {
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+.setting-item.single-action .control-btn {
+    width: 100%;
+    max-width: 240px;
+}
+
 .setting-item label {
     min-width: 100px;
     font-weight: bold;
@@ -746,6 +756,21 @@ body {
 .control-btn:hover {
     background: linear-gradient(145deg, #a0522d, #8b4513);
     transform: translateY(-2px);
+}
+
+.reset-btn {
+    background: linear-gradient(145deg, #8b1a1a, #5c0a0a);
+    border-color: #ff9f43;
+}
+
+.reset-btn:hover {
+    background: linear-gradient(145deg, #a62929, #751212);
+}
+
+.reset-warning {
+    color: #f6c177;
+    font-size: 0.85rem;
+    display: block;
 }
 
 .control-btn:active {
