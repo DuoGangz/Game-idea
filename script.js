@@ -1,4 +1,4 @@
-// Medieval Kingdom Defense - Game Logic
+// Kingdoms Last Stand - Game Logic
 
 class GameState {
     constructor() {
@@ -86,11 +86,11 @@ class GameState {
             effectsVolume: this.effectsVolume,
             consecutiveFailures: this.consecutiveFailures
         };
-        localStorage.setItem('medievalKingdomDefense', JSON.stringify(gameData));
+        localStorage.setItem('kingdomsLastStand', JSON.stringify(gameData));
     }
 
     loadGameState() {
-        const savedData = localStorage.getItem('medievalKingdomDefense');
+        const savedData = localStorage.getItem('kingdomsLastStand');
         if (savedData) {
             try {
                 const gameData = JSON.parse(savedData);
@@ -1256,7 +1256,7 @@ function togglePause() {
 
 function resetGame() {
     if (confirm('Are you sure you want to reset the game? This will delete all progress!')) {
-        localStorage.removeItem('medievalKingdomDefense');
+        localStorage.removeItem('kingdomsLastStand');
         location.reload();
     }
 }
