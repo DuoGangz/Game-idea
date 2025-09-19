@@ -65,6 +65,26 @@ const RESOURCE_DROP_BASE_AMOUNTS = {
     stone: 10
 };
 
+function clampGameSpeed(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+        return 1;
+    }
+    return Math.min(5, Math.max(1, Math.round(numeric)));
+}
+
+function getActiveGameSpeed() {
+    if (typeof game !== 'undefined' && game) {
+        if (typeof game.getGameSpeed === 'function') {
+            return game.getGameSpeed();
+        }
+        if (typeof game.gameSpeed === 'number') {
+            return clampGameSpeed(game.gameSpeed);
+        }
+    }
+    return 1;
+}
+
 function multiplyCost(cost = {}, multiplier = 1) {
     const result = { gold: 0, wood: 0, stone: 0, shards: 0, food: 0 };
     RESOURCE_TYPES.forEach(resource => {
@@ -233,6 +253,7 @@ class GameState {
         this.currentPathData = null;
         this.lastPathTemplateIndex = null;
         this.loadGameState();
+        this.setGameSpeed(this.gameSpeed, { skipSave: true });
         this.refreshEnemyDamage();
     }
 
@@ -255,7 +276,8 @@ class GameState {
         updateDisplay('city-food', this.resources.food);
         updateDisplay('city-shards', this.resources.shards);
         updateDisplay('defense-gold', this.resources.gold);
-        updateDisplay('defense-food', this.resources.food);
+        updateDisplay('defense-wood', this.resources.wood);
+        updateDisplay('defense-stone', this.resources.stone);
         updateDisplay('defense-shards', this.resources.shards);
         updateDisplay('shop-gold', this.resources.gold);
         updateDisplay('shop-wood', this.resources.wood);
@@ -265,6 +287,18 @@ class GameState {
 
         this.updatePopulationUI();
         this.updateCitizenUI();
+    }
+
+    setGameSpeed(value, options = {}) {
+        const { skipSave = false } = options;
+        this.gameSpeed = clampGameSpeed(value);
+        if (!skipSave) {
+            this.saveGameState();
+        }
+    }
+
+    getGameSpeed() {
+        return clampGameSpeed(this.gameSpeed);
     }
 
     canAfford(cost) {
@@ -325,7 +359,8 @@ class GameState {
             towers: this.towers.map(tower => tower.serialize()),
             musicVolume: this.musicVolume,
             effectsVolume: this.effectsVolume,
-            consecutiveFailures: this.consecutiveFailures
+            consecutiveFailures: this.consecutiveFailures,
+            gameSpeed: this.getGameSpeed()
         };
         localStorage.setItem('kingdomsLastStand', JSON.stringify(gameData));
     }
@@ -356,6 +391,10 @@ class GameState {
 
                 if (typeof gameData.population === 'number') {
                     this.population = gameData.population;
+                }
+
+                if (typeof gameData.gameSpeed === 'number') {
+                    this.setGameSpeed(gameData.gameSpeed, { skipSave: true });
                 }
 
                 if (typeof gameData.populationCapacity === 'number') {
@@ -1010,7 +1049,10 @@ class Tower {
     }
 
     canShoot() {
-        return Date.now() - this.lastShot >= this.fireRate;
+        const currentSpeed = Math.max(getActiveGameSpeed(), 1);
+        const baseInterval = typeof this.fireRate === 'number' && this.fireRate > 0 ? this.fireRate : 500;
+        const adjustedInterval = baseInterval / currentSpeed;
+        return Date.now() - this.lastShot >= Math.max(adjustedInterval, 16);
     }
 
     findTarget(enemies) {
@@ -1243,7 +1285,8 @@ class Enemy {
             return 'moving';
         }
 
-        let distanceToTravel = this.speed * deltaSeconds;
+        const speedMultiplier = Math.max(getActiveGameSpeed(), 1);
+        let distanceToTravel = this.speed * deltaSeconds * speedMultiplier;
 
         while (distanceToTravel > 0 && this.pathIndex < this.path.length - 1) {
             const segmentLength = this.segmentLengths[this.pathIndex] || 0;
@@ -1301,7 +1344,9 @@ class Enemy {
         if (!this.attacking) {
             return false;
         }
-        return now - this.lastAttackTime >= this.attackCooldownMs;
+        const currentSpeed = Math.max(getActiveGameSpeed(), 1);
+        const adjustedCooldown = this.attackCooldownMs / currentSpeed;
+        return now - this.lastAttackTime >= Math.max(adjustedCooldown, 50);
     }
 
     recordAttack(now) {
@@ -1327,13 +1372,16 @@ class Projectile {
         const dy = this.target.y - this.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
 
-        if (distance < 5) {
+        const speedMultiplier = Math.max(getActiveGameSpeed(), 1);
+        const stepDistance = this.speed * speedMultiplier;
+
+        if (distance <= stepDistance || distance === 0) {
             this.active = false;
             return { hit: true, damage: this.damage, target: this.target };
         }
 
-        this.x += (dx / distance) * this.speed;
-        this.y += (dy / distance) * this.speed;
+        this.x += (dx / distance) * stepDistance;
+        this.y += (dy / distance) * stepDistance;
         return { hit: false };
     }
 }
@@ -1358,6 +1406,26 @@ function initializeGame() {
     game.updateHealthUI();
     game.updatePopulationUI();
     updateTowerCostDisplay();
+    syncDefenseSpeedControl();
+}
+
+function updateSpeedSliderUI(speed) {
+    const normalized = clampGameSpeed(speed);
+    const slider = document.getElementById('speed-slider');
+    if (slider) {
+        slider.value = normalized;
+        slider.setAttribute('aria-valuenow', normalized);
+        slider.setAttribute('aria-valuetext', `${normalized}x`);
+    }
+
+    const display = document.getElementById('speed-value');
+    if (display) {
+        display.textContent = `${normalized}x`;
+    }
+}
+
+function syncDefenseSpeedControl() {
+    updateSpeedSliderUI(game.getGameSpeed());
 }
 
 function setupEventListeners() {
@@ -1405,6 +1473,15 @@ function setupEventListeners() {
     document.getElementById('start-wave').addEventListener('click', startWave);
     document.getElementById('pause-game').addEventListener('click', togglePause);
     document.getElementById('reset-game').addEventListener('click', resetGame);
+
+    const speedSlider = document.getElementById('speed-slider');
+    if (speedSlider) {
+        speedSlider.addEventListener('input', (e) => {
+            const newSpeed = clampGameSpeed(e.target.value);
+            game.setGameSpeed(newSpeed);
+            updateSpeedSliderUI(newSpeed);
+        });
+    }
 }
 
 function switchScreen(screenName) {
@@ -1427,6 +1504,7 @@ function switchScreen(screenName) {
 
     // Regenerate defense path when opening defense screen so dimensions are correct
     if (screenName === 'defense') {
+        syncDefenseSpeedControl();
         // Allow layout to settle before measuring
         setTimeout(() => {
             generateDefensePath();
@@ -2319,7 +2397,8 @@ function startWave() {
 
     // Check if this is a boss wave (every 5 waves)
     const isBossWave = game.currentWave % 5 === 0;
-    
+    const spawnInterval = 1000 / Math.max(game.getGameSpeed(), 1);
+
     if (isBossWave) {
         // Boss wave - spawn one powerful boss
         const bossTypes = ['boss-goblin', 'boss-orc', 'boss-dragon'];
@@ -2327,18 +2406,18 @@ function startWave() {
         setTimeout(() => {
             spawnEnemy(bossType);
             game.enemiesSpawned = 1;
-        }, 1000);
+        }, spawnInterval);
     } else {
         // Regular wave
         const enemyTypes = ['goblin', 'orc', 'dragon'];
         const enemyCount = Math.min(5 + game.currentWave * 2, 20);
-        
+
         for (let i = 0; i < enemyCount; i++) {
             setTimeout(() => {
                 const enemyType = enemyTypes[Math.floor(Math.random() * enemyTypes.length)];
                 spawnEnemy(enemyType);
                 game.enemiesSpawned++;
-            }, i * 1000);
+            }, i * spawnInterval);
         }
     }
 }

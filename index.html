@@ -224,7 +224,8 @@
                         <span id="health-value">100 / 100</span>
                     </div>
                     <span class="resource gold">Gold: <span id="defense-gold">500</span></span>
-                    <span class="resource">🍞 Food: <span id="defense-food">50</span></span>
+                    <span class="resource">🪵 Wood: <span id="defense-wood">50</span></span>
+                    <span class="resource">🪨 Stone: <span id="defense-stone">50</span></span>
                     <span class="resource shards">Shards: <span id="defense-shards">0</span></span>
                 </div>
             </div>
@@ -262,6 +263,21 @@
                                 <p>Cost: 250 Gold</p>
                             </div>
                         </div>
+                    </div>
+                    <div class="speed-control">
+                        <div class="speed-control-header">
+                            <label for="speed-slider">Game Speed</label>
+                            <span id="speed-value" class="speed-current">1x</span>
+                        </div>
+                        <input type="range" id="speed-slider" min="1" max="5" step="1" value="1" aria-valuemin="1" aria-valuemax="5" aria-valuenow="1" aria-valuetext="1x" aria-label="Tower defense speed">
+                        <div class="speed-marks">
+                            <span>1x</span>
+                            <span>2x</span>
+                            <span>3x</span>
+                            <span>4x</span>
+                            <span>5x</span>
+                        </div>
+                        <small class="speed-hint">Slide to boost waves to 2x, 3x, 4x, or 5x speed.</small>
                     </div>
                     <div class="game-controls">
                         <button id="start-wave" class="control-btn">Start Wave</button>
