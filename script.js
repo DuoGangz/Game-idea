@@ -654,24 +654,113 @@ function interpolatePath(points, step = 20) {
     return interpolated;
 }
 
-function drawDirtPath(layer, points, pathWidth) {
-    for (let i = 0; i < points.length - 1; i++) {
-        const start = points[i];
-        const end = points[i + 1];
-        const dx = end.x - start.x;
-        const dy = end.y - start.y;
-        const length = Math.sqrt(dx * dx + dy * dy);
-        const angle = Math.atan2(dy, dx) * (180 / Math.PI);
-
-        const segment = document.createElement('div');
-        segment.className = 'path-segment';
-        segment.style.width = `${length}px`;
-        segment.style.height = `${pathWidth}px`;
-        segment.style.left = `${start.x}px`;
-        segment.style.top = `${start.y}px`;
-        segment.style.transform = `translate(-${pathWidth / 2}px, -${pathWidth / 2}px) rotate(${angle}deg)`;
-        layer.appendChild(segment);
+function drawDirtPath(layer, points, pathWidth, width, height) {
+    if (!points.length) {
+        return;
     }
+
+    const svgNS = 'http://www.w3.org/2000/svg';
+    const viewWidth = Math.max(1, width);
+    const viewHeight = Math.max(1, height);
+    const svg = document.createElementNS(svgNS, 'svg');
+    svg.setAttribute('class', 'path-svg');
+    svg.setAttribute('width', '100%');
+    svg.setAttribute('height', '100%');
+    svg.setAttribute('viewBox', `0 0 ${viewWidth} ${viewHeight}`);
+    svg.setAttribute('preserveAspectRatio', 'none');
+
+    const uniqueId = `path-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+    const gradientId = `${uniqueId}-gradient`;
+    const textureId = `${uniqueId}-texture`;
+
+    const defs = document.createElementNS(svgNS, 'defs');
+
+    const gradient = document.createElementNS(svgNS, 'linearGradient');
+    gradient.setAttribute('id', gradientId);
+    gradient.setAttribute('x1', '0%');
+    gradient.setAttribute('y1', '0%');
+    gradient.setAttribute('x2', '0%');
+    gradient.setAttribute('y2', '100%');
+
+    [
+        { offset: '0%', color: '#d6bb92' },
+        { offset: '45%', color: '#b88855' },
+        { offset: '100%', color: '#825329' }
+    ].forEach(stopInfo => {
+        const stop = document.createElementNS(svgNS, 'stop');
+        stop.setAttribute('offset', stopInfo.offset);
+        stop.setAttribute('stop-color', stopInfo.color);
+        gradient.appendChild(stop);
+    });
+
+    defs.appendChild(gradient);
+
+    const filter = document.createElementNS(svgNS, 'filter');
+    filter.setAttribute('id', textureId);
+    filter.setAttribute('x', '-10%');
+    filter.setAttribute('y', '-10%');
+    filter.setAttribute('width', '120%');
+    filter.setAttribute('height', '120%');
+
+    const turbulence = document.createElementNS(svgNS, 'feTurbulence');
+    turbulence.setAttribute('type', 'fractalNoise');
+    turbulence.setAttribute('baseFrequency', '0.7');
+    turbulence.setAttribute('numOctaves', '2');
+    turbulence.setAttribute('seed', Math.floor(Math.random() * 1000));
+    turbulence.setAttribute('result', 'noise');
+    filter.appendChild(turbulence);
+
+    const colorMatrix = document.createElementNS(svgNS, 'feColorMatrix');
+    colorMatrix.setAttribute('in', 'noise');
+    colorMatrix.setAttribute('type', 'matrix');
+    colorMatrix.setAttribute('values', '1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.28 0');
+    colorMatrix.setAttribute('result', 'softNoise');
+    filter.appendChild(colorMatrix);
+
+    const blend = document.createElementNS(svgNS, 'feBlend');
+    blend.setAttribute('in', 'SourceGraphic');
+    blend.setAttribute('in2', 'softNoise');
+    blend.setAttribute('mode', 'soft-light');
+    filter.appendChild(blend);
+
+    defs.appendChild(filter);
+    svg.appendChild(defs);
+
+    const pathData = points
+        .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
+        .join(' ');
+
+    const outlinePath = document.createElementNS(svgNS, 'path');
+    outlinePath.setAttribute('d', pathData);
+    outlinePath.setAttribute('fill', 'none');
+    outlinePath.setAttribute('stroke', 'rgba(71, 40, 12, 0.55)');
+    outlinePath.setAttribute('stroke-width', (pathWidth * 1.25).toString());
+    outlinePath.setAttribute('stroke-linecap', 'round');
+    outlinePath.setAttribute('stroke-linejoin', 'round');
+    outlinePath.setAttribute('opacity', '0.75');
+    svg.appendChild(outlinePath);
+
+    const basePath = document.createElementNS(svgNS, 'path');
+    basePath.setAttribute('d', pathData);
+    basePath.setAttribute('fill', 'none');
+    basePath.setAttribute('stroke', `url(#${gradientId})`);
+    basePath.setAttribute('stroke-width', pathWidth.toString());
+    basePath.setAttribute('stroke-linecap', 'round');
+    basePath.setAttribute('stroke-linejoin', 'round');
+    basePath.setAttribute('filter', `url(#${textureId})`);
+    svg.appendChild(basePath);
+
+    const highlightPath = document.createElementNS(svgNS, 'path');
+    highlightPath.setAttribute('d', pathData);
+    highlightPath.setAttribute('fill', 'none');
+    highlightPath.setAttribute('stroke', 'rgba(255, 244, 214, 0.35)');
+    highlightPath.setAttribute('stroke-width', (pathWidth * 0.4).toString());
+    highlightPath.setAttribute('stroke-linecap', 'round');
+    highlightPath.setAttribute('stroke-linejoin', 'round');
+    highlightPath.setAttribute('opacity', '0.6');
+    svg.appendChild(highlightPath);
+
+    layer.appendChild(svg);
 }
 
 function addPathMarkers(layer, points) {
@@ -731,7 +820,7 @@ function generateDefensePath(options = {}) {
     const basePoints = buildPathPoints(width, height, marginX, marginY, templateIndex, jitter);
 
     pathLayer.innerHTML = '';
-    drawDirtPath(pathLayer, basePoints, pathWidth);
+    drawDirtPath(pathLayer, basePoints, pathWidth, width, height);
     addPathMarkers(pathLayer, basePoints);
 
     game.enemyPath = interpolatePath(basePoints, 18);
