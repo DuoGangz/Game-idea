@@ -1,0 +1,619 @@
+/* Medieval Kingdom Defense - Styles */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Times New Roman', serif;
+    background: linear-gradient(135deg, #2c1810 0%, #8b4513 50%, #2c1810 100%);
+    color: #f4e4bc;
+    min-height: 100vh;
+    overflow-x: hidden;
+}
+
+#game-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Navigation Bar */
+#game-nav {
+    background: linear-gradient(90deg, #1a0f0a 0%, #3d2914 50%, #1a0f0a 100%);
+    border-bottom: 3px solid #8b4513;
+    padding: 1rem 2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+}
+
+.nav-brand h1 {
+    font-size: 1.8rem;
+    color: #d4af37;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
+    font-weight: bold;
+}
+
+.nav-buttons {
+    display: flex;
+    gap: 1rem;
+}
+
+.nav-btn {
+    background: linear-gradient(145deg, #8b4513, #654321);
+    border: 2px solid #d4af37;
+    color: #f4e4bc;
+    padding: 0.8rem 1.5rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: bold;
+    transition: all 0.3s ease;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.7);
+}
+
+.nav-btn:hover {
+    background: linear-gradient(145deg, #a0522d, #8b4513);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.nav-btn.active {
+    background: linear-gradient(145deg, #d4af37, #b8860b);
+    color: #1a0f0a;
+    box-shadow: 0 0 15px rgba(212, 175, 55, 0.5);
+}
+
+/* Game Screens */
+.game-screen {
+    display: none;
+    flex: 1;
+    padding: 2rem;
+    background: rgba(26, 15, 10, 0.8);
+    border-radius: 10px;
+    margin: 1rem;
+    border: 2px solid #8b4513;
+}
+
+.game-screen.active {
+    display: block;
+}
+
+.screen-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 2px solid #8b4513;
+}
+
+.screen-header h2 {
+    font-size: 2rem;
+    color: #d4af37;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
+}
+
+/* Settings Screen */
+.settings-content {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.settings-section, .shop-section, .resources-section {
+    background: rgba(61, 41, 20, 0.6);
+    padding: 1.5rem;
+    border-radius: 10px;
+    border: 2px solid #8b4513;
+}
+
+.settings-section h3, .shop-section h3, .resources-section h3 {
+    color: #d4af37;
+    margin-bottom: 1rem;
+    font-size: 1.5rem;
+}
+
+.setting-item {
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.setting-item label {
+    min-width: 100px;
+    font-weight: bold;
+}
+
+.setting-item input, .setting-item select {
+    background: #2c1810;
+    border: 2px solid #8b4513;
+    color: #f4e4bc;
+    padding: 0.5rem;
+    border-radius: 5px;
+    flex: 1;
+}
+
+.resources {
+    display: flex;
+    gap: 2rem;
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+    background: rgba(26, 15, 10, 0.8);
+    border-radius: 8px;
+    border: 1px solid #8b4513;
+}
+
+.resource {
+    font-size: 1.1rem;
+    font-weight: bold;
+    color: #d4af37;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.resource.gold {
+    background-image: url('gold specific.PNG');
+    background-size: 24px 24px;
+    background-position: center left;
+    background-repeat: no-repeat;
+    padding-left: 30px;
+    min-height: 24px;
+}
+
+.resource.shards {
+    background-image: url('shards.PNG');
+    background-size: 24px 24px;
+    background-position: center left;
+    background-repeat: no-repeat;
+    padding-left: 30px;
+    min-height: 24px;
+    position: relative;
+}
+
+.resource.shards::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 24px;
+    height: 24px;
+    background: radial-gradient(circle, rgba(138, 43, 226, 0.6) 0%, rgba(138, 43, 226, 0.3) 50%, transparent 70%);
+    border-radius: 50%;
+    animation: pulseGlow 2s ease-in-out infinite;
+    z-index: -1;
+}
+
+@keyframes pulseGlow {
+    0%, 100% {
+        transform: translateY(-50%) scale(1);
+        opacity: 0.6;
+    }
+    50% {
+        transform: translateY(-50%) scale(1.2);
+        opacity: 0.8;
+    }
+}
+
+.shop-items {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.shop-item {
+    background: rgba(26, 15, 10, 0.8);
+    padding: 1rem;
+    border-radius: 8px;
+    border: 1px solid #8b4513;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.shop-item h4 {
+    color: #d4af37;
+    margin-bottom: 0.5rem;
+}
+
+.shop-item p {
+    color: #f4e4bc;
+    font-size: 0.9rem;
+}
+
+.buy-btn {
+    background: linear-gradient(145deg, #228b22, #006400);
+    border: 2px solid #32cd32;
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 5px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: all 0.3s ease;
+}
+
+.buy-btn:hover {
+    background: linear-gradient(145deg, #32cd32, #228b22);
+    transform: translateY(-1px);
+}
+
+/* Shop Screen */
+.shop-resources {
+    display: flex;
+    gap: 2rem;
+    font-size: 1.2rem;
+    font-weight: bold;
+    color: #d4af37;
+    align-items: center;
+}
+
+.shop-resources .resource {
+    margin: 0;
+}
+
+.shop-content {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+}
+
+/* City Management Screen */
+.city-resources {
+    display: flex;
+    gap: 2rem;
+    font-size: 1.2rem;
+    font-weight: bold;
+    color: #d4af37;
+    align-items: center;
+}
+
+.city-resources .resource {
+    margin: 0;
+}
+
+.city-content {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 2rem;
+    height: calc(100vh - 200px);
+}
+
+.city-grid {
+    background: rgba(61, 41, 20, 0.6);
+    border: 2px solid #8b4513;
+    border-radius: 10px;
+    padding: 1rem;
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    grid-template-rows: repeat(6, 1fr);
+    gap: 2px;
+    min-height: 500px;
+}
+
+.city-tile {
+    background: #2c1810;
+    border: 1px solid #8b4513;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    min-height: 60px;
+}
+
+.city-tile:hover {
+    background: #3d2914;
+    border-color: #d4af37;
+}
+
+.city-tile.occupied {
+    background: #654321;
+    cursor: default;
+}
+
+.building-panel {
+    background: rgba(61, 41, 20, 0.6);
+    border: 2px solid #8b4513;
+    border-radius: 10px;
+    padding: 1.5rem;
+    overflow-y: auto;
+}
+
+.building-panel h3 {
+    color: #d4af37;
+    margin-bottom: 1rem;
+    font-size: 1.5rem;
+}
+
+.building-options {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.building-option {
+    background: rgba(26, 15, 10, 0.8);
+    border: 1px solid #8b4513;
+    border-radius: 8px;
+    padding: 1rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.building-option:hover {
+    border-color: #d4af37;
+    background: rgba(61, 41, 20, 0.8);
+}
+
+.building-icon {
+    font-size: 2rem;
+}
+
+.building-info h4 {
+    color: #d4af37;
+    margin-bottom: 0.5rem;
+}
+
+.building-info p {
+    color: #f4e4bc;
+    font-size: 0.9rem;
+    margin-bottom: 0.2rem;
+}
+
+/* Tower Defense Screen */
+.defense-info {
+    display: flex;
+    gap: 2rem;
+    font-size: 1.2rem;
+    font-weight: bold;
+    color: #d4af37;
+    align-items: center;
+}
+
+.defense-info .resource {
+    margin: 0;
+}
+
+.defense-content {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 2rem;
+    height: calc(100vh - 200px);
+}
+
+.game-field {
+    background: rgba(61, 41, 20, 0.6);
+    border: 2px solid #8b4513;
+    border-radius: 10px;
+    position: relative;
+    min-height: 500px;
+    overflow: hidden;
+}
+
+.tower-panel {
+    background: rgba(61, 41, 20, 0.6);
+    border: 2px solid #8b4513;
+    border-radius: 10px;
+    padding: 1.5rem;
+    overflow-y: auto;
+}
+
+.tower-panel h3 {
+    color: #d4af37;
+    margin-bottom: 1rem;
+    font-size: 1.5rem;
+}
+
+.tower-options {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.tower-option {
+    background: rgba(26, 15, 10, 0.8);
+    border: 1px solid #8b4513;
+    border-radius: 8px;
+    padding: 1rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.tower-option:hover {
+    border-color: #d4af37;
+    background: rgba(61, 41, 20, 0.8);
+}
+
+.tower-icon {
+    font-size: 2rem;
+}
+
+.tower-info h4 {
+    color: #d4af37;
+    margin-bottom: 0.5rem;
+}
+
+.tower-info p {
+    color: #f4e4bc;
+    font-size: 0.9rem;
+    margin-bottom: 0.2rem;
+}
+
+.game-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.control-btn {
+    background: linear-gradient(145deg, #8b4513, #654321);
+    border: 2px solid #d4af37;
+    color: #f4e4bc;
+    padding: 1rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 1.1rem;
+    font-weight: bold;
+    transition: all 0.3s ease;
+}
+
+.control-btn:hover {
+    background: linear-gradient(145deg, #a0522d, #8b4513);
+    transform: translateY(-2px);
+}
+
+.control-btn:active {
+    transform: translateY(0);
+}
+
+/* Tower Defense Game Elements */
+.tower {
+    position: absolute;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 2px solid #d4af37;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    background: rgba(61, 41, 20, 0.9);
+    cursor: pointer;
+}
+
+.enemy {
+    position: absolute;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    transition: all 0.1s ease;
+}
+
+.enemy.goblin {
+    background: #228b22;
+    border: 2px solid #32cd32;
+}
+
+.enemy.orc {
+    background: #8b0000;
+    border: 2px solid #ff4500;
+}
+
+.enemy.dragon {
+    background: #4b0082;
+    border: 2px solid #9370db;
+}
+
+.projectile {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    background: #d4af37;
+    border-radius: 50%;
+    z-index: 10;
+}
+
+/* Responsive Design */
+@media (max-width: 1200px) {
+    .city-content, .defense-content {
+        grid-template-columns: 1fr;
+    }
+    
+    .settings-content {
+        grid-template-columns: 1fr;
+    }
+    
+    .shop-content {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    #game-nav {
+        flex-direction: column;
+        gap: 1rem;
+    }
+    
+    .nav-buttons {
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+    
+    .nav-btn {
+        padding: 0.6rem 1rem;
+        font-size: 0.9rem;
+    }
+    
+    .city-grid {
+        grid-template-columns: repeat(6, 1fr);
+        grid-template-rows: repeat(8, 1fr);
+    }
+    
+    .resources, .city-resources, .defense-info, .shop-resources {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+}
+
+/* Animations */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.game-screen.active {
+    animation: fadeIn 0.5s ease-out;
+}
+
+@keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+
+.nav-btn.active {
+    animation: pulse 2s infinite;
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+    width: 12px;
+}
+
+::-webkit-scrollbar-track {
+    background: #2c1810;
+    border-radius: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #8b4513;
+    border-radius: 6px;
+    border: 2px solid #2c1810;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #a0522d;
+}

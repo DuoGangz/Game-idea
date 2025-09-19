@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Medieval Kingdom Defense</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="game-container">
+        <!-- Navigation Bar -->
+        <nav id="game-nav">
+            <div class="nav-brand">
+                <h1>🏰 Medieval Kingdom Defense</h1>
+            </div>
+            <div class="nav-buttons">
+                <button id="settings-btn" class="nav-btn active">⚙️ Settings</button>
+                <button id="shop-btn" class="nav-btn">🛒 Shop</button>
+                <button id="city-btn" class="nav-btn">🏘️ City Management</button>
+                <button id="defense-btn" class="nav-btn">⚔️ Tower Defense</button>
+            </div>
+        </nav>
+
+        <!-- Settings Screen -->
+        <div id="settings-screen" class="game-screen active">
+            <div class="screen-header">
+                <h2>Settings</h2>
+            </div>
+            <div class="settings-content">
+                <div class="settings-section">
+                    <h3>Game Settings</h3>
+                    <div class="setting-item">
+                        <label for="music-volume">Music Volume:</label>
+                        <input type="range" id="music-volume" min="0" max="100" value="50">
+                    </div>
+                    <div class="setting-item">
+                        <label for="effects-volume">Effects Volume:</label>
+                        <input type="range" id="effects-volume" min="0" max="100" value="50">
+                    </div>
+                </div>
+                
+                <div class="resources-section">
+                    <h3>Resources</h3>
+                    <div class="resources">
+                        <div class="resource gold">Gold: <span id="gold">1000</span></div>
+                        <div class="resource">🪵 Wood: <span id="wood">500</span></div>
+                        <div class="resource">🪨 Stone: <span id="stone">300</span></div>
+                        <div class="resource shards">Shards: <span id="shards">0</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Shop Screen -->
+        <div id="shop-screen" class="game-screen">
+            <div class="screen-header">
+                <h2>Shop</h2>
+                <div class="shop-resources">
+                    <span class="resource gold">Gold: <span id="shop-gold">1000</span></span>
+                    <span class="resource">🪵 Wood: <span id="shop-wood">500</span></span>
+                    <span class="resource">🪨 Stone: <span id="shop-stone">300</span></span>
+                    <span class="resource shards">Shards: <span id="shop-shards">0</span></span>
+                </div>
+            </div>
+            <div class="shop-content">
+                <div class="shop-section">
+                    <h3>Buildings</h3>
+                    <div class="shop-items">
+                        <div class="shop-item">
+                            <h4>🏠 Basic House</h4>
+                            <p>Cost: 100 Gold, 50 Wood</p>
+                            <button class="buy-btn" data-item="house">Buy</button>
+                        </div>
+                        <div class="shop-item">
+                            <h4>🏭 Lumber Mill</h4>
+                            <p>Cost: 200 Gold, 100 Wood</p>
+                            <button class="buy-btn" data-item="lumber-mill">Buy</button>
+                        </div>
+                        <div class="shop-item">
+                            <h4>⛏️ Stone Quarry</h4>
+                            <p>Cost: 300 Gold, 50 Stone</p>
+                            <button class="buy-btn" data-item="quarry">Buy</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="shop-section">
+                    <h3>Shards</h3>
+                    <div class="shop-items">
+                        <div class="shop-item">
+                            <h4>💎 1 Shard</h4>
+                            <p>Cost: 500 Gold</p>
+                            <button class="buy-btn" data-item="shard-1">Buy</button>
+                        </div>
+                        <div class="shop-item">
+                            <h4>💎 5 Shards</h4>
+                            <p>Cost: 2,000 Gold</p>
+                            <button class="buy-btn" data-item="shard-5">Buy</button>
+                        </div>
+                        <div class="shop-item">
+                            <h4>💎 10 Shards</h4>
+                            <p>Cost: 3,500 Gold</p>
+                            <button class="buy-btn" data-item="shard-10">Buy</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- City Management Screen -->
+        <div id="city-screen" class="game-screen">
+            <div class="screen-header">
+                <h2>City Management</h2>
+                <div class="city-resources">
+                    <span class="resource gold">Gold: <span id="city-gold">1000</span></span>
+                    <span class="resource">🪵 Wood: <span id="city-wood">500</span></span>
+                    <span class="resource">🪨 Stone: <span id="city-stone">300</span></span>
+                </div>
+            </div>
+            <div class="city-content">
+                <div class="city-grid" id="city-grid">
+                    <!-- City tiles will be generated here -->
+                </div>
+                <div class="building-panel">
+                    <h3>Available Buildings</h3>
+                    <div class="building-options">
+                        <div class="building-option" data-building="house">
+                            <div class="building-icon">🏠</div>
+                            <div class="building-info">
+                                <h4>House</h4>
+                                <p>+5 Population</p>
+                                <p>Cost: 100 Gold, 50 Wood</p>
+                            </div>
+                        </div>
+                        <div class="building-option" data-building="lumber-mill">
+                            <div class="building-icon">🏭</div>
+                            <div class="building-info">
+                                <h4>Lumber Mill</h4>
+                                <p>+10 Wood/hour</p>
+                                <p>Cost: 200 Gold, 100 Wood</p>
+                            </div>
+                        </div>
+                        <div class="building-option" data-building="quarry">
+                            <div class="building-icon">⛏️</div>
+                            <div class="building-info">
+                                <h4>Stone Quarry</h4>
+                                <p>+8 Stone/hour</p>
+                                <p>Cost: 300 Gold, 50 Stone</p>
+                            </div>
+                        </div>
+                        <div class="building-option" data-building="barracks">
+                            <div class="building-icon">🏰</div>
+                            <div class="building-info">
+                                <h4>Barracks</h4>
+                                <p>Train Soldiers</p>
+                                <p>Cost: 500 Gold, 200 Wood</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tower Defense Screen -->
+        <div id="defense-screen" class="game-screen">
+            <div class="screen-header">
+                <h2>Tower Defense</h2>
+                <div class="defense-info">
+                    <span>Wave: <span id="current-wave">1</span></span>
+                    <span>Lives: <span id="lives">10</span></span>
+                    <span class="resource gold">Gold: <span id="defense-gold">1000</span></span>
+                </div>
+            </div>
+            <div class="defense-content">
+                <div class="game-field" id="game-field">
+                    <!-- Tower defense game area -->
+                </div>
+                <div class="tower-panel">
+                    <h3>Available Towers</h3>
+                    <div class="tower-options">
+                        <div class="tower-option" data-tower="archer">
+                            <div class="tower-icon">🏹</div>
+                            <div class="tower-info">
+                                <h4>Archer Tower</h4>
+                                <p>Range: Medium</p>
+                                <p>Damage: 25</p>
+                                <p>Cost: 150 Gold</p>
+                            </div>
+                        </div>
+                        <div class="tower-option" data-tower="cannon">
+                            <div class="tower-icon">💣</div>
+                            <div class="tower-info">
+                                <h4>Cannon Tower</h4>
+                                <p>Range: Long</p>
+                                <p>Damage: 50</p>
+                                <p>Cost: 300 Gold</p>
+                            </div>
+                        </div>
+                        <div class="tower-option" data-tower="magic">
+                            <div class="tower-icon">🔮</div>
+                            <div class="tower-info">
+                                <h4>Magic Tower</h4>
+                                <p>Range: Short</p>
+                                <p>Damage: 40</p>
+                                <p>Cost: 250 Gold</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="game-controls">
+                        <button id="start-wave" class="control-btn">Start Wave</button>
+                        <button id="pause-game" class="control-btn">Pause</button>
+                        <button id="reset-game" class="control-btn">Reset Game</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
