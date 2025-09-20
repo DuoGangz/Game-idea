@@ -10,6 +10,15 @@ Kingdoms Last Stand now runs fully inside Phaser 3 with bespoke scenes for the m
 
 > 💡 No build steps are required. Textures are generated at runtime, so the project runs offline out of the box.
 
+### If you see only a blue screen
+
+Phaser must be available before the game boots. This project now attempts to load Phaser from a local file first, then falls back to the CDN.
+
+- Recommended (offline): download Phaser 3.60 and place it at `libs/phaser.js` (or `libs/phaser.min.js`), then open `index.html` again.
+- Online: ensure the CDN `https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.js` is reachable (no blockers), then reload the page.
+
+When Phaser loads successfully, the canvas initializes and the Main Menu appears.
+
 ## 🎮 Core Scenes
 
 | Scene | Purpose |
