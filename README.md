@@ -1,117 +1,55 @@
-# 🏰 Kingdoms Last Stand
+# 🏰 Kingdoms Last Stand — Phaser Edition
 
-Kingdoms Last Stand is a medieval-themed browser game that combines city management and tower defense mechanics across three distinct screens.
+Kingdoms Last Stand is now a Phaser-powered prototype that blends serene city building with frantic tower defense. Everything is rendered inside a single Phaser game instance with modular scenes for each phase of play.
 
-## 🎮 Game Features
+## 🚀 Getting Started
 
-### Three Main Screens:
+1. Open `index.html` in any modern desktop browser.
+2. The main menu lets you jump straight into **City Management** or **Tower Defense**.
+3. The HUD bar (rendered by the `UIScene`) is always available for switching scenes, monitoring resources, and triggering waves.
 
-1. **⚙️ Settings & Shop**
-   - Adjust game volume and difficulty
-   - Purchase buildings and upgrades
-   - Manage your resources (Gold, Wood, Stone)
+> 💡 No build steps are required. All textures are generated at runtime, so the project works offline.
 
-2. **🏘️ City Management**
-   - Build and manage your medieval city
-   - Construct houses, lumber mills, quarries, and barracks
-   - Generate resources over time
-   - Plan your city layout on a grid system
+## 🎮 Core Scenes
 
-3. **⚔️ Tower Defense**
-   - Defend your kingdom from waves of enemies
-   - Place and upgrade different types of towers
-   - Fight goblins, orcs, and dragons
-   - Earn gold by defeating enemies
+| Scene | Purpose |
+| --- | --- |
+| `BootScene` | Generates procedural textures and bootstraps the shared `GameState`. |
+| `MainMenuScene` | Title screen with entry points into gameplay and a kingdom reset option. |
+| `CityScene` | Grid-based city builder that produces resources every few seconds based on the structures you place. |
+| `TowerDefenseScene` | Handles waves, tower placement, targeting, projectiles, and enemy movement along a handcrafted path. |
+| `UIScene` | Persistent overlay that shows resources, lives, and wave state while providing navigation and build menus. |
 
-## 🎯 How to Play
+## 🏗️ City Management
 
-### Getting Started
-1. Open `index.html` in your web browser
-2. Start with the Settings & Shop screen to familiarize yourself with the interface
-3. Use the navigation buttons to switch between screens
+- Place buildings on an 8×5 grid. Structures cost a mix of gold, wood, and stone.
+- Production ticks every 6 seconds. Houses yield gold, lumber mills produce wood, quarries mine stone, and barracks offer mixed income.
+- Building placement is governed by the shared `GameState`, so your city persists between visits.
 
-### City Management
-1. Click on a building type in the building panel
-2. Click on an empty tile in the city grid to place the building
-3. Buildings will automatically generate resources over time:
-   - **Houses**: Generate gold
-   - **Lumber Mills**: Generate wood
-   - **Quarries**: Generate stone
-   - **Barracks**: Train soldiers (future feature)
+## ⚔️ Tower Defense
 
-### Tower Defense
-1. Select a tower type from the tower panel
-2. Click on the game field to place the tower
-3. Click "Start Wave" to begin defending against enemies
-4. Towers will automatically target and shoot at enemies
-5. Click on towers to upgrade them (costs gold)
-6. Defeat all enemies in a wave to earn rewards
+- Deploy Archer Towers, Cannon Towers, and Mystic Spires on valid tiles beside the enemy path.
+- Press **Start Wave** in the HUD to spawn the next assault. Waves scale in length and difficulty and reward gold when cleared.
+- Towers fire automatically using Phaser Arcade Physics projectiles. Enemies follow a spline path; if they reach the keep you lose a life.
 
-### Resource Management
-- **Gold**: Used for purchasing buildings and towers
-- **Wood**: Required for certain buildings
-- **Stone**: Required for certain buildings
-- Resources are shared across all screens
+## 📊 Resources & Progression
 
-## 🏗️ Building Types
+- **Resources:** Gold, Wood, and Stone are global. Spend them in either gameplay mode and watch the HUD update instantly.
+- **Lives:** You begin with 20 hearts. When they reach zero, a game-over notice fires and the kingdom resets.
+- **Waves:** Surviving a wave grants bonus gold and increments the wave counter for the next challenge.
 
-| Building | Cost | Effect |
-|----------|------|--------|
-| 🏠 House | 100 Gold, 50 Wood | +5 Gold per minute |
-| 🏭 Lumber Mill | 200 Gold, 100 Wood | +10 Wood per minute |
-| ⛏️ Stone Quarry | 300 Gold, 50 Stone | +8 Stone per minute |
-| 🏰 Barracks | 500 Gold, 200 Wood | Train soldiers (future) |
+## 🧱 Technical Structure
 
-## 🏹 Tower Types
+- `src/state/GameState.js` centralises economy values, city grid data, tower placements, and emits events that scenes subscribe to.
+- Scenes are organised under `src/scenes/`, each derived from `Phaser.Scene` with clearly scoped responsibilities.
+- `src/main.js` wires all scenes into a single Phaser configuration with Arcade Physics enabled for projectiles.
+- Textures are generated in `BootScene` using `Graphics.generateTexture`, so no external spritesheets are required.
+- The HUD relies on Phaser containers and interactive geometry rather than DOM overlays, keeping the entire experience on the canvas.
 
-| Tower | Cost | Damage | Range | Fire Rate |
-|-------|------|--------|-------|-----------|
-| 🏹 Archer Tower | 150 Gold | 25 | Medium | Fast |
-| 💣 Cannon Tower | 300 Gold | 50 | Long | Slow |
-| 🔮 Magic Tower | 250 Gold | 40 | Short | Medium |
+## 🕹️ Controls
 
-## 👹 Enemy Types
+- **HUD Buttons:** Use the top bar to swap between City and Defense or return to the Main Menu.
+- **City:** Select a building card from the HUD, then click an empty tile to construct it.
+- **Defense:** Select a tower card and click a valid tile near the path. Press **Start Wave** to launch the next attack.
 
-| Enemy | Health | Speed | Reward |
-|-------|--------|-------|--------|
-| 👹 Goblin | 50 | Fast | 10 Gold |
-| 👺 Orc | 100 | Medium | 25 Gold |
-| 🐉 Dragon | 200 | Slow | 50 Gold |
-
-## 🎮 Controls
-
-- **Navigation**: Use the top navigation bar to switch between screens
-- **Building Placement**: Click building type, then click empty tile
-- **Tower Placement**: Click tower type, then click on game field
-- **Tower Upgrades**: Click on placed towers to upgrade them
-- **Wave Control**: Use "Start Wave" and "Pause" buttons
-
-## 🛠️ Technical Details
-
-- **Pure HTML/CSS/JavaScript**: No external dependencies
-- **Responsive Design**: Works on desktop and mobile devices
-- **Local Storage**: Game state persists during session
-- **Real-time Updates**: Resources and combat update automatically
-
-## 🚀 Future Enhancements
-
-- Save/load game functionality
-- More building and tower types
-- Multiplayer features
-- Sound effects and music
-- Advanced enemy AI
-- Special abilities and spells
-- Campaign mode with story
-
-## 📱 Browser Compatibility
-
-- Chrome (recommended)
-- Firefox
-- Safari
-- Edge
-
-## 🎨 Customization
-
-The game uses CSS custom properties and can be easily themed by modifying the color scheme in `styles.css`. The medieval theme uses warm browns, golds, and earth tones to create an authentic medieval atmosphere.
-
-Enjoy building your medieval kingdom and defending it from the forces of evil! 🏰⚔️
+Enjoy defending the realm with this refreshed Phaser architecture! 🛡️
