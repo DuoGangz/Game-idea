@@ -76,3 +76,8 @@ Notifications surface in the center of the HUD to report purchases, production, 
 - **Defense:** Select a tower card, click an empty defense tile, and press **Start Wave** to launch the next attack. Adjust speed with the 1×–5× buttons.
 
 Enjoy defending the realm with this Phaser-driven reimagining of Kingdoms Last Stand! 🛡️
+
+## Local Development
+
+- Serve the project over HTTP to load ES modules: `python3 -m http.server 8000` then open `http://localhost:8000/index.html`.
+- Place Phaser at `libs/phaser.js` (or `libs/phaser.min.js`) for offline use.
