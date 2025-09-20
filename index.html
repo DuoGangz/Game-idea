@@ -5,11 +5,62 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Kingdoms Last Stand</title>
   <link rel="stylesheet" href="styles.css" />
-  <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.js"></script>
 </head>
 <body>
   <div id="game-container"></div>
   <noscript>Kingdoms Last Stand requires JavaScript to run.</noscript>
-  <script type="module" src="src/main.js"></script>
+  <script>
+    (async () => {
+      const container = document.getElementById('game-container');
+
+      function loadScript(src) {
+        return new Promise((resolve) => {
+          const s = document.createElement('script');
+          s.src = src;
+          s.async = true;
+          s.onload = () => resolve(true);
+          s.onerror = () => resolve(false);
+          document.head.appendChild(s);
+        });
+      }
+
+      const sources = [
+        'libs/phaser.js',
+        'libs/phaser.min.js',
+        'https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.js'
+      ];
+
+      for (const src of sources) {
+        if (window.Phaser) break;
+        // eslint-disable-next-line no-await-in-loop
+        await loadScript(src);
+      }
+
+      if (!window.Phaser) {
+        const msg = document.createElement('div');
+        msg.style.maxWidth = '720px';
+        msg.style.padding = '16px 20px';
+        msg.style.background = 'rgba(18, 24, 38, 0.85)';
+        msg.style.border = '1px solid rgba(200, 155, 60, 0.4)';
+        msg.style.borderRadius = '12px';
+        msg.style.color = '#f8f4e3';
+        msg.style.fontFamily = "Cinzel, 'Times New Roman', serif";
+        msg.style.textAlign = 'center';
+        msg.style.margin = '20px';
+        msg.innerHTML = `
+          <strong>Phaser failed to load.</strong><br/>
+          Connect to the internet, or download phaser.js and place it at
+          <code>libs/phaser.js</code> (or <code>libs/phaser.min.js</code>), then reload.
+        `;
+        container.appendChild(msg);
+        return;
+      }
+
+      const m = document.createElement('script');
+      m.type = 'module';
+      m.src = 'src/main.js';
+      document.body.appendChild(m);
+    })();
+  </script>
 </body>
 </html>
