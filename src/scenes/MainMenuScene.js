@@ -15,7 +15,7 @@ export default class MainMenuScene extends Phaser.Scene {
     this.add
       .text(width / 2, height / 2 - 220, 'Kingdoms Last Stand', {
         fontFamily: 'Cinzel',
-        fontSize: '54px',
+        fontSize: '60px',
         color: '#f8f4e3'
       })
       .setOrigin(0.5);
