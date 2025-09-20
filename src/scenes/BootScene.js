@@ -51,10 +51,49 @@ export default class BootScene extends Phaser.Scene {
         key: 'building-barracks',
         base: 0xd7d1bc,
         roof: 0x9e4737
+      },
+      {
+        key: 'building-farm',
+        custom: () => {
+          graphics.clear();
+          graphics.fillStyle(0x6ab04c, 1);
+          graphics.fillRoundedRect(0, 42, tileSize, tileSize - 42, 20);
+          graphics.fillStyle(0xf5cd79, 1);
+          graphics.fillRoundedRect(12, 54, tileSize - 24, tileSize - 58, 12);
+          graphics.lineStyle(4, 0x9b7d2a, 0.6);
+          graphics.strokeRoundedRect(12, 54, tileSize - 24, tileSize - 58, 12);
+          graphics.fillStyle(0x3c7340, 1);
+          graphics.fillRoundedRect(18, 18, tileSize - 36, 26, 10);
+          graphics.fillStyle(0xfad390, 1);
+          graphics.fillCircle(tileSize / 2, 30, 8);
+          graphics.generateTexture('building-farm', tileSize, tileSize);
+        }
+      },
+      {
+        key: 'building-hospital',
+        custom: () => {
+          graphics.clear();
+          graphics.fillStyle(0xe6ecf8, 1);
+          graphics.fillRoundedRect(0, 18, tileSize, tileSize - 18, 18);
+          graphics.fillStyle(0x6c7ae0, 1);
+          graphics.fillRoundedRect(0, 0, tileSize, 28, 18);
+          graphics.fillStyle(0xc44569, 1);
+          graphics.fillRect(tileSize / 2 - 8, 34, 16, 32);
+          graphics.fillRect(tileSize / 2 - 20, 46, 40, 12);
+          graphics.lineStyle(4, 0x4b6584, 0.6);
+          graphics.strokeRoundedRect(2, 20, tileSize - 4, tileSize - 24, 14);
+          graphics.generateTexture('building-hospital', tileSize, tileSize);
+        }
       }
     ];
 
-    buildingSpecs.forEach(({ key, base, roof }) => {
+    buildingSpecs.forEach((spec) => {
+      if (spec.custom) {
+        spec.custom();
+        return;
+      }
+
+      const { key, base, roof } = spec;
       graphics.clear();
       graphics.fillStyle(base, 1);
       graphics.fillRoundedRect(0, 18, tileSize, tileSize - 18, 16);
@@ -68,7 +107,7 @@ export default class BootScene extends Phaser.Scene {
     const towerSpecs = [
       { key: 'tower-archer', primary: 0xc27ba0, secondary: 0x532849 },
       { key: 'tower-cannon', primary: 0x7f8fa6, secondary: 0x293342 },
-      { key: 'tower-mystic', primary: 0x9c88ff, secondary: 0x3f2f72 }
+      { key: 'tower-magic', primary: 0x9c88ff, secondary: 0x3f2f72 }
     ];
 
     towerSpecs.forEach(({ key, primary, secondary }) => {

@@ -1,35 +1,72 @@
+const RESOURCE_KEYS = ['gold', 'wood', 'stone', 'food', 'shards'];
+const SHARD_REQUIREMENTS = { 2: 5, 3: 20, 4: 50, 5: 100 };
+const HOUSE_CAPACITY_BY_TIER = { 1: 5, 2: 10, 3: 15, 4: 20, 5: 30 };
+const BUILDING_ASSIGNMENT_ORDER = ['farm', 'hospital', 'lumberMill', 'quarry', 'barracks'];
+const STARTING_CITIZENS = 5;
+const POPULATION_PER_BARRACKS = 10;
+const SUPPORT_PER_BARRACKS = 1;
+const MAX_BUILDING_LEVEL = 5;
+const MAX_TOWER_LEVEL = 3;
+const BASE_MAX_HEALTH = 100;
+const BASE_LEAK_DAMAGE = 10;
+const FOOD_CONSUMPTION_PER_TICK = 0.2; // food per citizen each production cycle
+
 const BUILDINGS = {
   house: {
     key: 'house',
     name: 'House',
     texture: 'building-house',
-    cost: { gold: 120, wood: 40 },
-    production: { gold: 12 },
-    description: 'Shelters villagers and generates tax revenue each cycle.'
+    cost: { gold: 100, wood: 50 },
+    description: 'Adds housing for citizens and generates a small tax income.',
+    production: { gold: 10 },
+    citizenRequirement: 0
   },
   lumberMill: {
     key: 'lumberMill',
     name: 'Lumber Mill',
     texture: 'building-lumber',
-    cost: { gold: 140, wood: 90 },
-    production: { wood: 16 },
-    description: 'Harvests timber from nearby forests.'
+    cost: { gold: 200, wood: 100 },
+    description: 'Harvests timber when staffed by up to 5 citizens.',
+    production: { wood: 20 },
+    citizenRequirement: 5
   },
   quarry: {
     key: 'quarry',
     name: 'Stone Quarry',
     texture: 'building-quarry',
-    cost: { gold: 180, stone: 60 },
-    production: { stone: 14 },
-    description: 'Extracts stone for construction projects.'
+    cost: { gold: 300, stone: 50 },
+    description: 'Mines stone with a crew of up to 10 citizens.',
+    production: { stone: 16 },
+    citizenRequirement: 10
+  },
+  farm: {
+    key: 'farm',
+    name: 'Farm',
+    texture: 'building-farm',
+    cost: { gold: 150, wood: 75 },
+    description: 'Produces food supplies when up to 6 citizens tend the crops.',
+    production: { food: 22 },
+    citizenRequirement: 6
   },
   barracks: {
     key: 'barracks',
     name: 'Barracks',
     texture: 'building-barracks',
-    cost: { gold: 220, wood: 120, stone: 60 },
-    production: { gold: 6, wood: 6 },
-    description: 'Trains militia that contribute taxes and gather supplies.'
+    cost: { gold: 300, wood: 10, stone: 10 },
+    description: 'Trains soldiers. Each staffed barracks supports one tower.',
+    production: { gold: 6 },
+    citizenRequirement: 10,
+    towerSupport: 1
+  },
+  hospital: {
+    key: 'hospital',
+    name: 'Hospital',
+    texture: 'building-hospital',
+    cost: { gold: 450, wood: 150, stone: 150 },
+    description: 'Improves keep resilience when staffed by healers.',
+    production: null,
+    citizenRequirement: 20,
+    healthBonusPerLevel: 0.15
   }
 };
 
@@ -38,37 +75,34 @@ const TOWERS = {
     key: 'archer',
     name: 'Archer Tower',
     texture: 'tower-archer',
-    cost: { gold: 160, wood: 60 },
+    cost: { gold: 150, wood: 40, stone: 15 },
     projectileTexture: 'projectile-arrow',
-    damage: 22,
+    damage: 24,
     range: 180,
     fireRate: 900,
-    projectileSpeed: 360,
-    description: 'Fast-firing archers pick off lightly armoured foes.'
+    projectileSpeed: 360
   },
   cannon: {
     key: 'cannon',
     name: 'Cannon Tower',
     texture: 'tower-cannon',
-    cost: { gold: 260, stone: 90 },
+    cost: { gold: 300, wood: 20, stone: 90 },
     projectileTexture: 'projectile-shell',
-    damage: 46,
-    range: 200,
+    damage: 50,
+    range: 210,
     fireRate: 1600,
-    projectileSpeed: 280,
-    description: 'Slow but devastating cannonballs crush tough enemies.'
+    projectileSpeed: 280
   },
-  mystic: {
-    key: 'mystic',
-    name: 'Mystic Spire',
-    texture: 'tower-mystic',
-    cost: { gold: 230, wood: 50, stone: 50 },
+  magic: {
+    key: 'magic',
+    name: 'Magic Tower',
+    texture: 'tower-magic',
+    cost: { gold: 250, wood: 35, stone: 60, shards: 5 },
     projectileTexture: 'projectile-orb',
-    damage: 32,
+    damage: 36,
     range: 220,
     fireRate: 1200,
-    projectileSpeed: 420,
-    description: 'Harnesses arcane energy to burn through magical hides.'
+    projectileSpeed: 420
   }
 };
 
@@ -78,30 +112,58 @@ const ENEMIES = {
     name: 'Goblin',
     texture: 'enemy-goblin',
     hp: 60,
-    speed: 0.00011,
+    speed: 0.00012,
     reward: 12
   },
   orc: {
     key: 'orc',
     name: 'Orc',
     texture: 'enemy-orc',
-    hp: 130,
-    speed: 0.000085,
-    reward: 25
+    hp: 140,
+    speed: 0.00009,
+    reward: 26
   },
   dragon: {
     key: 'dragon',
     name: 'Drake',
     texture: 'enemy-dragon',
-    hp: 260,
-    speed: 0.00007,
-    reward: 60
+    hp: 280,
+    speed: 0.000075,
+    reward: 66
   }
 };
 
-const RESOURCE_KEYS = ['gold', 'wood', 'stone'];
-const GRID_ROWS = 5;
-const GRID_COLS = 8;
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function multiplyCost(cost = {}, multiplier = 1) {
+  const result = {};
+  RESOURCE_KEYS.forEach((key) => {
+    const amount = cost[key] ?? 0;
+    if (amount > 0) {
+      result[key] = Math.round(amount * multiplier);
+    }
+  });
+  return result;
+}
+
+function accumulateCost(total = {}, extra = {}) {
+  RESOURCE_KEYS.forEach((key) => {
+    const amount = extra[key] ?? 0;
+    if (amount > 0) {
+      total[key] = (total[key] ?? 0) + amount;
+    }
+  });
+  return total;
+}
+
+function formatResourceBundle(bundle = {}) {
+  return RESOURCE_KEYS
+    .filter((key) => (bundle[key] ?? 0) > 0)
+    .map((key) => `${bundle[key]} ${key}`)
+    .join(', ');
+}
 
 export default class GameState extends Phaser.Events.EventEmitter {
   constructor() {
@@ -111,28 +173,51 @@ export default class GameState extends Phaser.Events.EventEmitter {
 
   reset() {
     this.resources = {
-      gold: 520,
-      wood: 260,
-      stone: 180
+      gold: 500,
+      wood: 50,
+      stone: 50,
+      food: 50,
+      shards: 0
     };
 
-    this.cityGrid = Array.from({ length: GRID_ROWS }, () =>
-      Array.from({ length: GRID_COLS }, () => null)
-    );
+    this.population = STARTING_CITIZENS;
+    this.populationCapacity = STARTING_CITIZENS;
+    this.unassignedCitizens = STARTING_CITIZENS;
+
+    this.cityRows = 5;
+    this.cityCols = 8;
+    this.cityGrid = Array.from({ length: this.cityRows }, () => Array(this.cityCols).fill(null));
+    this.buildings = [];
+    this.nextBuildingId = 1;
 
     this.towerPlacements = [];
-    this.lives = 20;
+
+    this.baseMaxHealth = BASE_MAX_HEALTH;
+    this.maxHealth = this.baseMaxHealth;
+    this.health = this.maxHealth;
+    this.leakDamage = BASE_LEAK_DAMAGE;
+
     this.currentWave = 1;
     this.waveRunning = false;
     this.selectedBuilding = null;
     this.selectedTower = null;
 
+    this.gameSpeed = 1;
+    this.musicVolume = 50;
+    this.effectsVolume = 50;
+
+    this.cachedSupport = 0;
+
     this.emit('resources-changed', this.getResources());
     this.emit('city-updated', this.getCityGrid());
+    this.emit('population-changed', this.getPopulationState());
+    this.emit('health-changed', this.getHealthState());
     this.emit('towers-updated', this.getTowerPlacements());
-    this.emit('lives-changed', this.lives);
+    this.emit('tower-support-changed', this.getTowerSupportState());
     this.emit('wave-updated', this.currentWave);
     this.emit('wave-state-changed', this.waveRunning);
+    this.emit('game-speed-changed', this.gameSpeed);
+    this.emit('volume-changed', this.getVolumeState());
     this.emit('building-selected', this.selectedBuilding);
     this.emit('tower-selected', this.selectedTower);
   }
@@ -141,18 +226,43 @@ export default class GameState extends Phaser.Events.EventEmitter {
     return { ...this.resources };
   }
 
-  getLives() {
-    return this.lives;
+  getPopulationState() {
+    return {
+      population: Math.floor(this.population),
+      capacity: Math.floor(this.populationCapacity),
+      unassigned: Math.floor(this.unassignedCitizens)
+    };
   }
 
-  getCurrentWave() {
-    return this.currentWave;
+  getFoodRequirementPerTick() {
+    return Math.max(0, Math.floor(this.population * FOOD_CONSUMPTION_PER_TICK));
+  }
+
+  getHealthState() {
+    return {
+      current: Math.round(this.health),
+      max: Math.round(this.maxHealth)
+    };
+  }
+
+  getTowerSupportState() {
+    return {
+      support: this.getBarracksSupport(),
+      used: this.towerPlacements.length
+    };
+  }
+
+  getVolumeState() {
+    return {
+      music: this.musicVolume,
+      effects: this.effectsVolume
+    };
   }
 
   canAfford(cost = {}) {
-    return Object.entries(cost).every(([resource, amount]) => {
-      const available = this.resources[resource] ?? 0;
-      return available >= amount;
+    return RESOURCE_KEYS.every((key) => {
+      const required = cost[key] ?? 0;
+      return (this.resources[key] ?? 0) >= required;
     });
   }
 
@@ -161,39 +271,28 @@ export default class GameState extends Phaser.Events.EventEmitter {
       return false;
     }
 
-    Object.entries(cost).forEach(([resource, amount]) => {
-      if (!RESOURCE_KEYS.includes(resource)) {
-        return;
+    RESOURCE_KEYS.forEach((key) => {
+      const amount = cost[key] ?? 0;
+      if (amount > 0) {
+        this.resources[key] -= amount;
       }
-
-      this.resources[resource] -= amount;
     });
 
     this.emit('resources-changed', this.getResources());
     return true;
   }
 
-  addResource(resource, amount) {
-    if (!RESOURCE_KEYS.includes(resource) || !Number.isFinite(amount)) {
-      return;
-    }
-
-    this.resources[resource] += amount;
-    this.emit('resources-changed', this.getResources());
-  }
-
   addResources(bundle = {}) {
-    let updated = false;
-    Object.entries(bundle).forEach(([resource, amount]) => {
-      if (!RESOURCE_KEYS.includes(resource) || !Number.isFinite(amount)) {
-        return;
+    let changed = false;
+    RESOURCE_KEYS.forEach((key) => {
+      const amount = bundle[key] ?? 0;
+      if (Number.isFinite(amount) && amount !== 0) {
+        this.resources[key] += amount;
+        changed = true;
       }
-
-      this.resources[resource] += amount;
-      updated = true;
     });
 
-    if (updated) {
+    if (changed) {
       this.emit('resources-changed', this.getResources());
     }
   }
@@ -206,8 +305,52 @@ export default class GameState extends Phaser.Events.EventEmitter {
     return Object.values(BUILDINGS);
   }
 
+  getBuildingTierCost(key, tier) {
+    const blueprint = this.getBuildingBlueprint(key);
+    if (!blueprint) {
+      return null;
+    }
+
+    const tierCost = multiplyCost(blueprint.cost, tier);
+    const shardCost = SHARD_REQUIREMENTS[tier] ?? 0;
+    if (shardCost > 0) {
+      tierCost.shards = (tierCost.shards ?? 0) + shardCost;
+    }
+    return tierCost;
+  }
+
+  getBuildingTotalInvestment(key, level) {
+    const total = {};
+    for (let tier = 1; tier <= level; tier += 1) {
+      accumulateCost(total, this.getBuildingTierCost(key, tier));
+    }
+    return total;
+  }
+
+  getBuildingRefund(key, level) {
+    const investment = this.getBuildingTotalInvestment(key, level);
+    const refund = {};
+    RESOURCE_KEYS.forEach((resource) => {
+      const amount = investment[resource] ?? 0;
+      if (amount > 0) {
+        refund[resource] = Math.floor(amount * 0.5);
+      }
+    });
+    return refund;
+  }
+
   getCityGrid() {
-    return this.cityGrid.map((row) => row.map((tile) => (tile ? { ...tile } : null)));
+    return this.cityGrid.map((row) =>
+      row.map((placement) =>
+        placement
+          ? {
+              key: placement.key,
+              level: placement.level,
+              assignedCitizens: placement.assignedCitizens
+            }
+          : null
+      )
+    );
   }
 
   getSelectedBuilding() {
@@ -218,9 +361,13 @@ export default class GameState extends Phaser.Events.EventEmitter {
     if (key && !BUILDINGS[key]) {
       return;
     }
-
     this.selectedBuilding = key ?? null;
     this.emit('building-selected', this.selectedBuilding);
+  }
+
+  findBuilding(col, row) {
+    const placement = this.cityGrid[row]?.[col] ?? null;
+    return placement ?? null;
   }
 
   placeBuilding(col, row, key) {
@@ -229,26 +376,242 @@ export default class GameState extends Phaser.Events.EventEmitter {
       return { success: false, reason: 'unknown-building' };
     }
 
-    const rowData = this.cityGrid[row];
-    if (!rowData || typeof rowData[col] === 'undefined') {
+    const tileRow = this.cityGrid[row];
+    if (!tileRow || typeof tileRow[col] === 'undefined') {
       return { success: false, reason: 'invalid-location' };
     }
 
-    if (rowData[col]) {
+    if (tileRow[col]) {
       return { success: false, reason: 'occupied' };
     }
 
-    if (!this.spend(blueprint.cost)) {
+    if (key === 'barracks') {
+      const existing = this.buildings.filter((building) => building.key === 'barracks').length;
+      const requiredPopulation = POPULATION_PER_BARRACKS * (existing + 1);
+      if (this.population < requiredPopulation) {
+        return { success: false, reason: 'population', required: requiredPopulation };
+      }
+    }
+
+    const cost = this.getBuildingTierCost(key, 1);
+    if (!this.spend(cost)) {
       return { success: false, reason: 'resources' };
     }
 
-    rowData[col] = {
+    const placement = {
+      id: this.nextBuildingId,
       key,
-      level: 1
+      col,
+      row,
+      level: 1,
+      assignedCitizens: 0
     };
+    this.nextBuildingId += 1;
 
+    this.buildings.push(placement);
+    tileRow[col] = placement;
+
+    this.recalculateCityStats();
     this.emit('city-updated', this.getCityGrid());
+
     return { success: true, building: blueprint };
+  }
+
+  upgradeBuilding(col, row) {
+    const placement = this.findBuilding(col, row);
+    if (!placement) {
+      return { success: false, reason: 'missing' };
+    }
+
+    if (placement.level >= MAX_BUILDING_LEVEL) {
+      return { success: false, reason: 'max-level' };
+    }
+
+    const nextLevel = placement.level + 1;
+    const cost = this.getBuildingTierCost(placement.key, nextLevel);
+    if (!this.spend(cost)) {
+      return { success: false, reason: 'resources', cost };
+    }
+
+    placement.level = nextLevel;
+    this.recalculateCityStats();
+    this.emit('city-updated', this.getCityGrid());
+
+    return { success: true, level: placement.level };
+  }
+
+  removeBuilding(col, row) {
+    const placement = this.findBuilding(col, row);
+    if (!placement) {
+      return { success: false, reason: 'missing' };
+    }
+
+    const refund = this.getBuildingRefund(placement.key, placement.level);
+
+    const rowData = this.cityGrid[row];
+    if (rowData) {
+      rowData[col] = null;
+    }
+    const index = this.buildings.findIndex((building) => building.id === placement.id);
+    if (index !== -1) {
+      this.buildings.splice(index, 1);
+    }
+
+    this.addResources(refund);
+    this.recalculateCityStats();
+    this.emit('city-updated', this.getCityGrid());
+
+    return { success: true, refund };
+  }
+
+  recalculateCityStats() {
+    const previousCapacity = this.populationCapacity;
+    this.populationCapacity = Math.max(
+      STARTING_CITIZENS,
+      this.buildings.reduce((total, building) => {
+        if (building.key === 'house') {
+          const level = clamp(building.level, 1, MAX_BUILDING_LEVEL);
+          return total + (HOUSE_CAPACITY_BY_TIER[level] ?? 0);
+        }
+        return total;
+      }, 0)
+    );
+
+    if (this.population > this.populationCapacity) {
+      this.population = this.populationCapacity;
+    } else if (this.population < STARTING_CITIZENS) {
+      this.population = STARTING_CITIZENS;
+    }
+
+    this.autoAssignCitizens();
+    this.recalculateHealthFromBuildings();
+
+    if (previousCapacity !== this.populationCapacity) {
+      this.emit('population-changed', this.getPopulationState());
+    } else {
+      this.emit('population-changed', this.getPopulationState());
+    }
+
+    this.emit('tower-support-changed', this.getTowerSupportState());
+  }
+
+  autoAssignCitizens() {
+    const totalCitizens = Math.max(0, Math.floor(this.population));
+    let remaining = totalCitizens;
+
+    this.buildings.forEach((building) => {
+      building.assignedCitizens = 0;
+    });
+
+    const ordered = [...this.buildings].sort((a, b) => {
+      const priorityA = BUILDING_ASSIGNMENT_ORDER.indexOf(a.key);
+      const priorityB = BUILDING_ASSIGNMENT_ORDER.indexOf(b.key);
+      const resolvedA = priorityA === -1 ? Number.MAX_SAFE_INTEGER : priorityA;
+      const resolvedB = priorityB === -1 ? Number.MAX_SAFE_INTEGER : priorityB;
+      if (resolvedA === resolvedB) {
+        return a.id - b.id;
+      }
+      return resolvedA - resolvedB;
+    });
+
+    ordered.forEach((building) => {
+      const blueprint = this.getBuildingBlueprint(building.key);
+      const requirement = blueprint?.citizenRequirement ?? 0;
+      if (requirement <= 0) {
+        return;
+      }
+
+      const assigned = Math.min(requirement, remaining);
+      building.assignedCitizens = assigned;
+      remaining -= assigned;
+    });
+
+    this.unassignedCitizens = remaining;
+  }
+
+  recalculateHealthFromBuildings() {
+    const previousMax = this.maxHealth;
+    const ratio = previousMax > 0 ? this.health / previousMax : 1;
+
+    let bonus = 0;
+    this.buildings.forEach((building) => {
+      const blueprint = this.getBuildingBlueprint(building.key);
+      if (!blueprint?.healthBonusPerLevel) {
+        return;
+      }
+      const staffing = blueprint.citizenRequirement > 0
+        ? building.assignedCitizens / blueprint.citizenRequirement
+        : 1;
+      const effective = clamp(staffing, 0, 1) * blueprint.healthBonusPerLevel * building.level;
+      bonus += effective;
+    });
+
+    const multiplier = 1 + bonus;
+    this.maxHealth = Math.max(this.baseMaxHealth, Math.round(this.baseMaxHealth * multiplier));
+    this.health = clamp(Math.round(this.maxHealth * ratio), 1, this.maxHealth);
+    this.emit('health-changed', this.getHealthState());
+  }
+
+  processCityTick() {
+    if (this.buildings.length === 0) {
+      return null;
+    }
+
+    const totals = {};
+
+    this.buildings.forEach((building) => {
+      const blueprint = this.getBuildingBlueprint(building.key);
+      if (!blueprint) {
+        return;
+      }
+
+      const staffing = blueprint.citizenRequirement > 0
+        ? building.assignedCitizens / blueprint.citizenRequirement
+        : 1;
+      const efficiency = clamp(staffing, 0, 1);
+
+      if (blueprint.production) {
+        Object.entries(blueprint.production).forEach(([resource, amount]) => {
+          const gain = Math.round(amount * building.level * efficiency);
+          if (gain > 0) {
+            totals[resource] = (totals[resource] ?? 0) + gain;
+          }
+        });
+      }
+    });
+
+    const foodConsumption = this.getFoodRequirementPerTick();
+    if (foodConsumption > 0) {
+      totals.food = (totals.food ?? 0) - foodConsumption;
+    }
+
+    const summaryParts = [];
+    Object.entries(totals).forEach(([resource, amount]) => {
+      if (amount === 0) {
+        return;
+      }
+      this.resources[resource] = (this.resources[resource] ?? 0) + amount;
+      summaryParts.push(`${amount > 0 ? '+' : ''}${amount} ${resource}`);
+    });
+
+    this.resources.food = Math.max(0, this.resources.food);
+
+    if (this.population < this.populationCapacity && this.resources.food > this.getFoodRequirementPerTick()) {
+      this.population += 1;
+    }
+
+    this.autoAssignCitizens();
+
+    this.emit('resources-changed', this.getResources());
+    this.emit('population-changed', this.getPopulationState());
+    this.emit('tower-support-changed', this.getTowerSupportState());
+    this.recalculateHealthFromBuildings();
+
+    if (summaryParts.length === 0) {
+      return null;
+    }
+
+    return `City production: ${summaryParts.join(', ')}`;
   }
 
   getTowerBlueprint(key) {
@@ -267,7 +630,6 @@ export default class GameState extends Phaser.Events.EventEmitter {
     if (key && !TOWERS[key]) {
       return;
     }
-
     this.selectedTower = key ?? null;
     this.emit('tower-selected', this.selectedTower);
   }
@@ -278,6 +640,30 @@ export default class GameState extends Phaser.Events.EventEmitter {
 
   hasTowerAt(col, row) {
     return this.towerPlacements.some((placement) => placement.col === col && placement.row === row);
+  }
+
+  getBarracksSupport() {
+    const support = this.buildings.reduce((total, building) => {
+      if (building.key !== 'barracks') {
+        return total;
+      }
+      const blueprint = this.getBuildingBlueprint('barracks');
+      const staffing = blueprint.citizenRequirement > 0
+        ? building.assignedCitizens / blueprint.citizenRequirement
+        : 1;
+      const effective = clamp(staffing, 0, 1) * (blueprint.towerSupport ?? 0) * building.level;
+      return total + Math.floor(effective * SUPPORT_PER_BARRACKS);
+    }, 0);
+
+    return support;
+  }
+
+  getAvailableTowerSlots() {
+    return Math.max(0, this.getBarracksSupport() - this.towerPlacements.length);
+  }
+
+  emitTowerSupport() {
+    this.emit('tower-support-changed', this.getTowerSupportState());
   }
 
   placeTower(col, row, key) {
@@ -294,6 +680,10 @@ export default class GameState extends Phaser.Events.EventEmitter {
       return { success: false, reason: 'occupied' };
     }
 
+    if (this.getAvailableTowerSlots() <= 0) {
+      return { success: false, reason: 'support' };
+    }
+
     if (!this.spend(blueprint.cost)) {
       return { success: false, reason: 'resources' };
     }
@@ -305,7 +695,10 @@ export default class GameState extends Phaser.Events.EventEmitter {
       level: 1
     };
     this.towerPlacements.push(placement);
+
     this.emit('towers-updated', this.getTowerPlacements());
+    this.emitTowerSupport();
+
     return { success: true, tower: blueprint };
   }
 
@@ -317,6 +710,7 @@ export default class GameState extends Phaser.Events.EventEmitter {
 
     this.towerPlacements.splice(index, 1);
     this.emit('towers-updated', this.getTowerPlacements());
+    this.emitTowerSupport();
     return true;
   }
 
@@ -354,29 +748,104 @@ export default class GameState extends Phaser.Events.EventEmitter {
     this.emit('wave-updated', this.currentWave);
   }
 
-  loseLife(amount = 1) {
-    this.lives = Math.max(0, this.lives - amount);
-    this.emit('lives-changed', this.lives);
-
-    if (this.lives <= 0) {
+  takeDamage(amount) {
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return;
+    }
+    this.health = Math.max(0, this.health - amount);
+    this.emit('health-changed', this.getHealthState());
+    if (this.health <= 0) {
       this.emit('game-over');
     }
   }
 
-  restoreLives(amount) {
-    if (!Number.isFinite(amount)) {
+  heal(amount) {
+    if (!Number.isFinite(amount) || amount <= 0) {
       return;
     }
+    this.health = Math.min(this.maxHealth, this.health + amount);
+    this.emit('health-changed', this.getHealthState());
+  }
 
-    this.lives += amount;
-    this.emit('lives-changed', this.lives);
+  getGameSpeed() {
+    return this.gameSpeed;
+  }
+
+  getLeakDamage() {
+    return this.leakDamage;
+  }
+
+  setGameSpeed(speed) {
+    const normalized = clamp(Math.round(speed), 1, 5);
+    if (normalized === this.gameSpeed) {
+      return;
+    }
+    this.gameSpeed = normalized;
+    this.emit('game-speed-changed', this.gameSpeed);
+  }
+
+  setMusicVolume(volume) {
+    const normalized = clamp(Math.round(volume), 0, 100);
+    if (normalized === this.musicVolume) {
+      return;
+    }
+    this.musicVolume = normalized;
+    this.emit('volume-changed', this.getVolumeState());
+  }
+
+  setEffectsVolume(volume) {
+    const normalized = clamp(Math.round(volume), 0, 100);
+    if (normalized === this.effectsVolume) {
+      return;
+    }
+    this.effectsVolume = normalized;
+    this.emit('volume-changed', this.getVolumeState());
+  }
+
+  purchaseShopItem(itemKey) {
+    if (!itemKey) {
+      return { success: false, reason: 'unknown' };
+    }
+
+    if (itemKey.startsWith('shard-')) {
+      const quantity = Number.parseInt(itemKey.split('-')[1], 10);
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        return { success: false, reason: 'unknown' };
+      }
+      const costs = { 1: 500, 5: 2000, 10: 3500 };
+      const goldCost = costs[quantity];
+      if (!goldCost) {
+        return { success: false, reason: 'unknown' };
+      }
+      const cost = { gold: goldCost };
+      if (!this.spend(cost)) {
+        return { success: false, reason: 'resources', cost };
+      }
+      this.addResources({ shards: quantity });
+      return { success: true, message: `Purchased ${quantity} shard${quantity > 1 ? 's' : ''}.` };
+    }
+
+    const blueprint = this.getBuildingBlueprint(itemKey);
+    if (!blueprint) {
+      return { success: false, reason: 'unknown' };
+    }
+
+    const cost = this.getBuildingTierCost(itemKey, 1);
+    if (!this.spend(cost)) {
+      return { success: false, reason: 'resources', cost };
+    }
+
+    return { success: true, message: `${blueprint.name} schematics acquired.` };
+  }
+
+  getCurrentWave() {
+    return this.currentWave;
   }
 
   notify(message) {
     if (!message) {
       return;
     }
-
     this.emit('notification', message);
   }
 }

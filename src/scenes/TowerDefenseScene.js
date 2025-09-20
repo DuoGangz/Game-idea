@@ -2,6 +2,16 @@ import SceneKeys from '../config/SceneKeys.js';
 
 const WAVE_REWARD_BASE = 50;
 const WAVE_REWARD_BONUS = 15;
+const RESOURCE_DROP_CHANCES = {
+  shards: 0.01,
+  wood: 0.35,
+  stone: 0.18
+};
+const RESOURCE_DROP_AMOUNTS = {
+  shards: 1,
+  wood: 14,
+  stone: 10
+};
 
 export default class TowerDefenseScene extends Phaser.Scene {
   constructor() {
@@ -27,6 +37,7 @@ export default class TowerDefenseScene extends Phaser.Scene {
     this.waveQueue = [];
     this.waveInProgress = false;
     this.enemySpawnEvent = null;
+    this.speedMultiplier = this.gameState.getGameSpeed();
 
     this.createBattlefield();
     this.createPath();
@@ -41,6 +52,7 @@ export default class TowerDefenseScene extends Phaser.Scene {
     this.gameState.on('tower-selected', this.handleTowerSelection, this);
     this.gameState.on('towers-updated', this.syncTowersFromState, this);
     this.gameState.on('request-wave-start', this.handleWaveRequest, this);
+    this.gameState.on('game-speed-changed', this.handleSpeedChanged, this);
 
     this.events.on('wake', this.onWake, this);
     this.events.on('sleep', this.onSleep, this);
@@ -149,6 +161,9 @@ export default class TowerDefenseScene extends Phaser.Scene {
         case 'resources':
           this.gameState.notify('Gather more resources before recruiting that tower.');
           break;
+        case 'support':
+          this.gameState.notify('Staff additional barracks to support more towers.');
+          break;
         case 'occupied':
           this.gameState.notify('That tile is no longer available.');
           break;
@@ -214,6 +229,13 @@ export default class TowerDefenseScene extends Phaser.Scene {
     this.startWave();
   }
 
+  handleSpeedChanged(speed) {
+    this.speedMultiplier = speed;
+    if (this.enemySpawnEvent) {
+      this.enemySpawnEvent.timeScale = this.speedMultiplier;
+    }
+  }
+
   startWave() {
     if (this.waveInProgress) {
       return;
@@ -252,6 +274,9 @@ export default class TowerDefenseScene extends Phaser.Scene {
         this.spawnNextEnemy();
       }
     });
+    if (this.enemySpawnEvent) {
+      this.enemySpawnEvent.timeScale = this.speedMultiplier;
+    }
   }
 
   spawnNextEnemy() {
@@ -303,9 +328,11 @@ export default class TowerDefenseScene extends Phaser.Scene {
     if (awardReward) {
       const reward = enemy.getData('reward') ?? 0;
       if (reward > 0) {
-        this.gameState.addResource('gold', reward);
+        this.gameState.addResources({ gold: reward });
       }
     }
+
+    this.maybeDropResources(enemy);
 
     enemy.destroy();
     this.checkWaveStatus();
@@ -327,15 +354,16 @@ export default class TowerDefenseScene extends Phaser.Scene {
     this.waveQueue = [];
     const waveNumber = this.gameState.getCurrentWave();
     const reward = WAVE_REWARD_BASE + waveNumber * WAVE_REWARD_BONUS;
-    this.gameState.addResource('gold', reward);
+    this.gameState.addResources({ gold: reward });
     this.gameState.notify(`Wave ${waveNumber} repelled! +${reward} gold awarded.`);
     this.gameState.advanceWave();
   }
 
   handleEnemyReachedBase(enemy) {
     enemy.destroy();
-    this.gameState.loseLife(1);
-    this.gameState.notify('An enemy slipped through the defenses!');
+    const damage = this.gameState.getLeakDamage();
+    this.gameState.takeDamage(damage);
+    this.gameState.notify(`An enemy slipped through the defenses (-${damage} health)!`);
     this.checkWaveStatus();
   }
 
@@ -344,12 +372,14 @@ export default class TowerDefenseScene extends Phaser.Scene {
       return;
     }
 
+    const scaledDelta = delta * this.speedMultiplier;
+
     this.enemies.children.each((enemy) => {
       if (!enemy.active) {
         return;
       }
 
-      enemy.pathProgress += enemy.speed * delta;
+      enemy.pathProgress += enemy.speed * scaledDelta;
       this.path.getPoint(enemy.pathProgress, this.pathVector);
       enemy.setPosition(this.pathVector.x, this.pathVector.y);
 
@@ -362,7 +392,7 @@ export default class TowerDefenseScene extends Phaser.Scene {
       if (!projectile.active) {
         return;
       }
-      projectile.lifespan = (projectile.lifespan ?? 1000) - delta;
+      projectile.lifespan = (projectile.lifespan ?? 1000) - scaledDelta;
       if (projectile.lifespan <= 0) {
         projectile.destroy();
       }
@@ -415,6 +445,32 @@ export default class TowerDefenseScene extends Phaser.Scene {
     projectile.setData('damage', blueprint.damage);
     projectile.lifespan = 1200;
     this.physics.moveToObject(projectile, enemy, blueprint.projectileSpeed);
+    if (projectile.body && projectile.body.velocity) {
+      projectile.body.velocity.x *= this.speedMultiplier;
+      projectile.body.velocity.y *= this.speedMultiplier;
+    }
+  }
+
+  maybeDropResources(enemy) {
+    const drops = {};
+    Object.entries(RESOURCE_DROP_CHANCES).forEach(([resource, chance]) => {
+      if (Math.random() < chance) {
+        const amount = RESOURCE_DROP_AMOUNTS[resource] ?? 0;
+        if (amount > 0) {
+          drops[resource] = (drops[resource] ?? 0) + amount;
+        }
+      }
+    });
+
+    if (Object.keys(drops).length === 0) {
+      return;
+    }
+
+    this.gameState.addResources(drops);
+    const summary = Object.entries(drops)
+      .map(([resource, amount]) => `+${amount} ${resource}`)
+      .join(', ');
+    this.gameState.notify(`Recovered spoils: ${summary}.`);
   }
 
   resetTileTint(tile) {
@@ -437,6 +493,7 @@ export default class TowerDefenseScene extends Phaser.Scene {
     this.selectedTowerKey = this.gameState.getSelectedTower();
     if (this.enemySpawnEvent) {
       this.enemySpawnEvent.paused = false;
+      this.enemySpawnEvent.timeScale = this.speedMultiplier;
     }
   }
 
@@ -450,5 +507,6 @@ export default class TowerDefenseScene extends Phaser.Scene {
     this.gameState.off('tower-selected', this.handleTowerSelection, this);
     this.gameState.off('towers-updated', this.syncTowersFromState, this);
     this.gameState.off('request-wave-start', this.handleWaveRequest, this);
+    this.gameState.off('game-speed-changed', this.handleSpeedChanged, this);
   }
 }
