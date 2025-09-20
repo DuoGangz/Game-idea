@@ -1,117 +1,69 @@
-# 🏰 Kingdoms Last Stand
+# 🏰 Kingdoms Last Stand — Phaser Edition
 
-Kingdoms Last Stand is a medieval-themed browser game that combines city management and tower defense mechanics across three distinct screens.
+Kingdoms Last Stand now runs fully inside Phaser 3 with bespoke scenes for the menu, user interface, city building, and tower defense layers. All rendering, input, and layout happens in the canvas, so the experience matches the original prototype while benefiting from Phaser's game loop and scene management.
 
-## 🎮 Game Features
+## 🚀 Getting Started
 
-### Three Main Screens:
+1. Open `index.html` in any modern desktop browser.
+2. From the main menu choose **City Management** or **Tower Defense** to jump straight into either mode.
+3. The top HUD bar (powered by the `UIScene`) is always active and lets you swap panels, monitor resources, adjust audio, and start waves.
 
-1. **⚙️ Settings & Shop**
-   - Adjust game volume and difficulty
-   - Purchase buildings and upgrades
-   - Manage your resources (Gold, Wood, Stone)
+> 💡 No build steps are required. Textures are generated at runtime, so the project runs offline out of the box.
 
-2. **🏘️ City Management**
-   - Build and manage your medieval city
-   - Construct houses, lumber mills, quarries, and barracks
-   - Generate resources over time
-   - Plan your city layout on a grid system
+## 🎮 Core Scenes
 
-3. **⚔️ Tower Defense**
-   - Defend your kingdom from waves of enemies
-   - Place and upgrade different types of towers
-   - Fight goblins, orcs, and dragons
-   - Earn gold by defeating enemies
+| Scene | Purpose |
+| --- | --- |
+| `BootScene` | Generates procedural textures and bootstraps the shared `GameState`. |
+| `MainMenuScene` | Title screen with entry points into gameplay and a full kingdom reset. |
+| `CityScene` | 8×5 grid city builder that produces resources based on staffed structures every few seconds. |
+| `TowerDefenseScene` | Runs combat waves, tower placement, targeting, projectiles, leaks, and rewards. |
+| `UIScene` | Persistent overlay for navigation, resource/health display, settings, shop purchases, and wave control. |
 
-## 🎯 How to Play
+## 🧭 HUD & Navigation
 
-### Getting Started
-1. Open `index.html` in your web browser
-2. Start with the Settings & Shop screen to familiarize yourself with the interface
-3. Use the navigation buttons to switch between screens
+The HUD contains five panels that mirror the original UI flow:
 
-### City Management
-1. Click on a building type in the building panel
-2. Click on an empty tile in the city grid to place the building
-3. Buildings will automatically generate resources over time:
-   - **Houses**: Generate gold
-   - **Lumber Mills**: Generate wood
-   - **Quarries**: Generate stone
-   - **Barracks**: Train soldiers (future feature)
+- **Main Menu** — Return to the title scene and reset/continue a campaign.
+- **Settings** — Adjust music/effects volume and reset the entire kingdom.
+- **Shop** — Buy new building contracts or shard bundles using gold.
+- **City** — Inspect citizens, food upkeep, and building stats while selecting structures to place.
+- **Defense** — Select tower types, check barracks support, start waves, and tweak the global game speed (1×–5×).
 
-### Tower Defense
-1. Select a tower type from the tower panel
-2. Click on the game field to place the tower
-3. Click "Start Wave" to begin defending against enemies
-4. Towers will automatically target and shoot at enemies
-5. Click on towers to upgrade them (costs gold)
-6. Defeat all enemies in a wave to earn rewards
+Notifications surface in the center of the HUD to report purchases, production, combat rewards, and warnings.
 
-### Resource Management
-- **Gold**: Used for purchasing buildings and towers
-- **Wood**: Required for certain buildings
-- **Stone**: Required for certain buildings
-- Resources are shared across all screens
+## 🏗️ City Management
 
-## 🏗️ Building Types
+- Place buildings on an 8×5 grid; each tile tracks level, staffing, and citizen requirements.
+- Houses raise population capacity, while farms, lumber mills, quarries, barracks, and hospitals provide distinct bonuses.
+- Citizens auto-assign to structures in priority order. Staffing levels influence production output and hospital health bonuses.
+- Every 6 seconds `processCityTick` grants resource income, consumes food per citizen, and can grow population if stores are plentiful.
+- Buildings can be upgraded up to Tier 5 (paying scaled resource + shard costs) or demolished for partial refunds via the popup menu.
 
-| Building | Cost | Effect |
-|----------|------|--------|
-| 🏠 House | 100 Gold, 50 Wood | +5 Gold per minute |
-| 🏭 Lumber Mill | 200 Gold, 100 Wood | +10 Wood per minute |
-| ⛏️ Stone Quarry | 300 Gold, 50 Stone | +8 Stone per minute |
-| 🏰 Barracks | 500 Gold, 200 Wood | Train soldiers (future) |
+## ⚔️ Tower Defense
 
-## 🏹 Tower Types
+- Deploy Archer, Cannon, or Magic towers on non-path tiles; each one requires available barracks support.
+- Towers acquire targets automatically, fire Arcade Physics projectiles, and respect the global game-speed multiplier.
+- Enemies travel a handcrafted path. If a unit reaches the keep it damages kingdom health; dropping to zero triggers a game over.
+- Waves scale composition and reward gold on victory, with bonus resource drops (wood/stone/shards) coming from defeated foes.
 
-| Tower | Cost | Damage | Range | Fire Rate |
-|-------|------|--------|-------|-----------|
-| 🏹 Archer Tower | 150 Gold | 25 | Medium | Fast |
-| 💣 Cannon Tower | 300 Gold | 50 | Long | Slow |
-| 🔮 Magic Tower | 250 Gold | 40 | Short | Medium |
+## 📊 Resources & Progression
 
-## 👹 Enemy Types
+- **Resources:** Gold, Wood, Stone, Food, and Shards are persistent across scenes. HUD readouts and notifications update instantly.
+- **Population:** Track total citizens, housing capacity, and unassigned workers. Barracks require sufficient citizens and grant tower slots.
+- **Health:** The keep starts at 100 health and can be boosted by staffed hospitals. Enemy leaks deal configurable damage per wave.
+- **Waves:** Each cleared wave awards gold based on the wave number and advances the counter for the next assault.
 
-| Enemy | Health | Speed | Reward |
-|-------|--------|-------|--------|
-| 👹 Goblin | 50 | Fast | 10 Gold |
-| 👺 Orc | 100 | Medium | 25 Gold |
-| 🐉 Dragon | 200 | Slow | 50 Gold |
+## 🛠️ Settings & Shop
 
-## 🎮 Controls
+- Volume buttons adjust music/effects in 10-point increments (values emit through `GameState` for future audio hooks).
+- The reset button wipes resources, buildings, towers, and waves, restoring the starting state.
+- Shop cards let you spend gold on building schematics or shard bundles used for higher-tier upgrades.
 
-- **Navigation**: Use the top navigation bar to switch between screens
-- **Building Placement**: Click building type, then click empty tile
-- **Tower Placement**: Click tower type, then click on game field
-- **Tower Upgrades**: Click on placed towers to upgrade them
-- **Wave Control**: Use "Start Wave" and "Pause" buttons
+## 🕹️ Controls
 
-## 🛠️ Technical Details
+- **HUD Buttons:** Use the top navigation to swap panels, open the shop/settings, or return to the Main Menu.
+- **City:** Select a building card in the HUD and click an empty city tile to construct it. Use the popup to upgrade or demolish.
+- **Defense:** Select a tower card, click an empty defense tile, and press **Start Wave** to launch the next attack. Adjust speed with the 1×–5× buttons.
 
-- **Pure HTML/CSS/JavaScript**: No external dependencies
-- **Responsive Design**: Works on desktop and mobile devices
-- **Local Storage**: Game state persists during session
-- **Real-time Updates**: Resources and combat update automatically
-
-## 🚀 Future Enhancements
-
-- Save/load game functionality
-- More building and tower types
-- Multiplayer features
-- Sound effects and music
-- Advanced enemy AI
-- Special abilities and spells
-- Campaign mode with story
-
-## 📱 Browser Compatibility
-
-- Chrome (recommended)
-- Firefox
-- Safari
-- Edge
-
-## 🎨 Customization
-
-The game uses CSS custom properties and can be easily themed by modifying the color scheme in `styles.css`. The medieval theme uses warm browns, golds, and earth tones to create an authentic medieval atmosphere.
-
-Enjoy building your medieval kingdom and defending it from the forces of evil! 🏰⚔️
+Enjoy defending the realm with this Phaser-driven reimagining of Kingdoms Last Stand! 🛡️
