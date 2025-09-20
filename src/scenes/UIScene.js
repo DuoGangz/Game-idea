@@ -360,8 +360,7 @@ export default class UIScene extends Phaser.Scene {
       descriptionLines.push(`Tower Support: ${building.towerSupport}`);
     }
 
-    const desc = this.add.text(0, 26, descriptionLines.join('
-'), {
+    const desc = this.add.text(0, 26, descriptionLines.join('\n'), {
       fontFamily: 'Cinzel',
       fontSize: '14px',
       color: '#b6c1d1',
@@ -536,7 +535,7 @@ export default class UIScene extends Phaser.Scene {
       onChange(current);
     };
 
-    const minus = this.createSmallButton(-20, 0, '−', () => {
+    const minus = this.createSmallButton(-20, 0, '-', () => {
       emitChange(current - 10);
     });
     const plus = this.createSmallButton(90, 0, '+', () => {
